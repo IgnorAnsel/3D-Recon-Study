@@ -2,10 +2,6 @@ project(Feature)
 
 add_executable(Harris Harris.cpp)
 add_executable(Harris_opencvAPI Harris_opencvAPI.cpp)
-include_directories(
-    ${PCL_INCLUDE_DIRS}
-    ${OpenCV_INCLUDE_DIRS}
-)
 target_link_libraries(Harris PRIVATE
         PRIVATE
         ${OpenCV_LIBS}
