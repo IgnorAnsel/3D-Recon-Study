@@ -12,15 +12,20 @@ namespace pc {
         PCLProcessing();
         bool initPCL();
         bool initPCL(const std::string &cloudPath);
-        bool loadCloud(const std::string &cloudPath);
-        bool saveCloud(const std::string &cloudPath);
         template <typename PointT>
-        bool addCloud(const pcl::PointCloud<PointT> &cloud);
+        bool initPCL(const pcl::PointCloud<PointT> &cloud, const std::string viewerName = "PCL Viewer");
+        bool loadPointCloud(const std::string &cloudPath);
+        bool savePointCloud(const std::string &cloudPath);
+        template <typename PointT>
+        bool addPointCloud(const pcl::PointCloud<PointT> &cloud);
+        template <typename PointT>
+        bool addPointCloud(const pcl::PointCloud<PointT> &cloud, const std::string &frameName);
         bool addCamera(const cv::Mat &R, const cv::Mat &t);
         ~PCLProcessing();
     private:
         pcl::PointCloud<pcl::PointXYZ>::Ptr globalCloud_;
         pcl::visualization::PCLVisualizer viewer_;
+        bool isInit_;
     };
 }
 
