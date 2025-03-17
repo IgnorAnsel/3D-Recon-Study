@@ -1,13 +1,14 @@
 #include "preprocessing/pclprocessing.h"
 
 // pc => pclprocessing
-namespace pc {
+namespace pre {
 PCLProcessing::PCLProcessing() {}
 PCLProcessing::~PCLProcessing() {}
 bool PCLProcessing::initPCL() {
   if (isInit_)
     return false;
-  viewer_ = pcl::visualization::PCLVisualizer::Ptr(new pcl::visualization::PCLVisualizer("PCL Viewer"));
+  viewer_ = pcl::visualization::PCLVisualizer::Ptr(
+      new pcl::visualization::PCLVisualizer("PCL Viewer"));
   viewer_->setBackgroundColor(0, 0, 0);
 
   isInit_ = true;
@@ -16,7 +17,8 @@ bool PCLProcessing::initPCL() {
 bool PCLProcessing::initPCL(const std::string &cloudPath) {
   if (isInit_)
     return false;
-  viewer_ = pcl::visualization::PCLVisualizer::Ptr(new pcl::visualization::PCLVisualizer("PCL Viewer"));
+  viewer_ = pcl::visualization::PCLVisualizer::Ptr(
+      new pcl::visualization::PCLVisualizer("PCL Viewer"));
   viewer_->setBackgroundColor(0, 0, 0);
   isInit_ = true;
   return true;
@@ -26,7 +28,8 @@ bool PCLProcessing::initPCL(const pcl::PointCloud<PointT> &cloud,
                             const std::string viewerName) {
   if (isInit_)
     return false;
-  viewer_ = pcl::visualization::PCLVisualizer::Ptr(new pcl::visualization::PCLVisualizer(viewerName));
+  viewer_ = pcl::visualization::PCLVisualizer::Ptr(
+      new pcl::visualization::PCLVisualizer(viewerName));
   viewer_->setBackgroundColor(0, 0, 0);
   isInit_ = true;
   return true;
@@ -101,22 +104,20 @@ void PCLProcessing::visualizeCameraInPointCloud(const CameraInfo &camera) {
 
   // 创建指示相机朝向的箭头
   std::string arrowID = "camera_dir_" + std::to_string(camera.frameId);
-  
+
   // 计算相机朝向 (z轴方向)
   cv::Mat zAxis = camera.R.col(2);
-  Eigen::Vector3f direction(zAxis.at<double>(0, 0), 
-                           zAxis.at<double>(1, 0), 
-                           zAxis.at<double>(2, 0));
-  
+  Eigen::Vector3f direction(zAxis.at<double>(0, 0), zAxis.at<double>(1, 0),
+                            zAxis.at<double>(2, 0));
+
   // 相机朝向箭头的终点
   pcl::PointXYZ arrowStart(px, py, pz);
-  pcl::PointXYZ arrowEnd(px + direction[0], 
-                        py + direction[1], 
-                        pz + direction[2]);
-  
+  pcl::PointXYZ arrowEnd(px + direction[0], py + direction[1],
+                         pz + direction[2]);
+
   // 添加箭头
   viewer_->addArrow(arrowEnd, arrowStart, 0, 0, 255, false, arrowID);
-  
+
   // 添加相机坐标系
   Eigen::Matrix3f rotation;
   for (int i = 0; i < 3; i++) {
@@ -124,18 +125,19 @@ void PCLProcessing::visualizeCameraInPointCloud(const CameraInfo &camera) {
       rotation(i, j) = camera.R.at<double>(i, j);
     }
   }
-  
+
   Eigen::Affine3f transform = Eigen::Affine3f::Identity();
   transform.translation() << px, py, pz;
   transform.rotate(rotation);
-  
+
   std::string coordID = "camera_coord_" + std::to_string(camera.frameId);
   viewer_->addCoordinateSystem(0.5, transform, coordID);
 }
-void PCLProcessing::setGlobalCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud) {
+void PCLProcessing::setGlobalCloud(
+    const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud) {
   globalCloud_ = cloud;
 }
 pcl::visualization::PCLVisualizer::Ptr PCLProcessing::getViewer() {
   return viewer_;
 }
-} // namespace pc
+} // namespace pre

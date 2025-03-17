@@ -14,7 +14,7 @@ struct CameraInfo {
     std::string imagePath; // 对应的图像路径(可选)
 };
 
-namespace pc {
+namespace pre {
     class PCLProcessing {
     public:
         PCLProcessing();

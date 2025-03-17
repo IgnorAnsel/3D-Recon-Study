@@ -2,6 +2,7 @@
 add_library(Preprocessing
     pre.cpp  
     pclprocessing.cpp
+    SFMFrontend.cpp
 )
 
 target_include_directories(Preprocessing PUBLIC
