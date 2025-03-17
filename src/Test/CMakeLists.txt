@@ -9,12 +9,11 @@ target_link_libraries(Test_pre PRIVATE
         ${OpenCV_LIBS}
         )
 target_link_libraries(Test_pclprocessing PRIVATE
-        PCLprocessing
+        Preprocessing
         ${PCL_LIBRARIES}
         ${OpenCV_LIBS}
 )
 target_link_libraries(Test_2OSSFM PRIVATE
-        PCLprocessing
         Preprocessing
         ${OpenCV_LIBS}
         ${PCL_LIBRARIES}

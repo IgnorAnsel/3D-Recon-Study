@@ -1,6 +1,7 @@
 # 预处理模块
 add_library(Preprocessing
     pre.cpp  
+    pclprocessing.cpp
 )
 
 target_include_directories(Preprocessing PUBLIC
