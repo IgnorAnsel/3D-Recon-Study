@@ -1,5 +1,5 @@
 #include "preprocessing/pre.h"
-
+#include "preprocessing/console.h"
 namespace pre {
 CameraPreprocessor::CameraPreprocessor() {}
 CameraPreprocessor::CameraPreprocessor(const std::string &calibFilePath) {
@@ -25,6 +25,15 @@ cv::Mat CameraPreprocessor::getDistortionCoefficients() const {
 }
 cv::Mat CameraPreprocessor::undistort(const cv::Mat &image) const {
   cv::Mat undistortedImage;
+  if (intrinsicMatrix_.empty() || distortionCoefficients_.empty()) {
+    std::cerr
+        << Console::WARNING
+        << "CameraPreprocessor: Camera parameters are not set: Please use "
+           "loadCameraParams() first"
+        << std::endl;
+
+    return image;
+  }
   cv::undistort(image, undistortedImage, intrinsicMatrix_,
                 distortionCoefficients_);
   return undistortedImage;

@@ -1,6 +1,9 @@
 #include "preprocessing/SFMFrontend.h"
 
 namespace pre {
+SFMFrontend::SFMFrontend() {}
+SFMFrontend::SFMFrontend(FeatureDetectorType detector_type) {}
+SFMFrontend::~SFMFrontend() {}
 void SFMFrontend::createSIFT(int nfeatures, int nOctaveLayers,
                              double contrastThreshold, double edgeThreshold,
                              double sigma, bool enable_precise_upscale) {
@@ -42,4 +45,23 @@ cv::Mat SFMFrontend::drawFeatureMatches(
               cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
   return matchImg;
 }
+cv::Mat
+SFMFrontend::Test_DrawFeatureMatches(const cv::Mat &img1, const cv::Mat &img2,
+                                     const FeatureDetectorType &detectorType) {
+  std::vector<cv::KeyPoint> keypoints1, keypoints2;
+  cv::Mat descriptors1, descriptors2;
+  switch (detectorType) {
+  case FeatureDetectorType::SIFT:
+    createSIFT();
+    detectFeatures(img1, keypoints1, descriptors1);
+    detectFeatures(img2, keypoints2, descriptors2);
+    break;
+  default:
+    break;
+  }
+
+  std::vector<cv::DMatch> matches = matchFeatures(descriptors1, descriptors2);
+  return drawFeatureMatches(img1, keypoints1, img2, keypoints2, matches);
+}
+
 } // namespace pre
