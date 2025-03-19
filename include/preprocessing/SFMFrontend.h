@@ -65,6 +65,14 @@ public:
                              const std::vector<cv::Point2f> &points2,
                              const cv::Mat &fundamentalMatrix,
                              const cv::Mat &img1, const cv::Mat &img2);
+  cv::Mat
+  ComputeEssentialMatrix(const cv::Mat &K1, const cv::Mat &K2,
+                         const cv::Mat &fundamentalMatrix); // 计算本质矩阵
+  void TestEssentialMatrix(const std::vector<cv::Point2f> &points1,
+                           const std::vector<cv::Point2f> &points2,
+                           const cv::Mat &essentialMatrix, const cv::Mat &K1,
+                           const cv::Mat &K2, const cv::Mat &img1,
+                           const cv::Mat &img2);
   ~SFMFrontend();
 
 private:

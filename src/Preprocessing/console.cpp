@@ -16,5 +16,4 @@ const std::string Console::INFO = CYAN + "[Info] " + RESET;
 const std::string Console::SUCCESS = GREEN + "[Success] " + RESET;
 const std::string Console::DEBUG = BLUE + "[Debug] " + RESET;
 const std::string Console::TEST = MAGENTA + "[TEST] " + RESET;
-
 std::ostream &Console::reset(std::ostream &os) { return os << RESET; }

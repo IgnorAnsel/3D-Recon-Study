@@ -239,6 +239,196 @@ void SFMFrontend::TestFundamentalMatrix(const std::vector<cv::Point2f> &points1,
 
   // 显示结果图像
   cv::imshow("Fundamental Matrix Test", outImg);
-  cv::waitKey(0);
+}
+cv::Mat SFMFrontend::ComputeEssentialMatrix(const cv::Mat &K1,
+                                            const cv::Mat &K2,
+                                            const cv::Mat &fundamentalMatrix) {
+  if (K1.empty() || K2.empty() || fundamentalMatrix.empty()) {
+    std::cerr << Console::ERROR
+              << "[SFMFrontend::ComputeEssentialMatrix] Invalid input matrices!"
+              << std::endl;
+    return cv::Mat();
+  }
+  if (K1.cols != 3 || K1.rows != 3 || K2.cols != 3 || K2.rows != 3 ||
+      fundamentalMatrix.cols != 3 || fundamentalMatrix.rows != 3) {
+    std::cerr << Console::ERROR
+              << "[SFMFrontend::ComputeEssentialMatrix] Invalid input matrix "
+                 "dimensions!"
+              << std::endl;
+    return cv::Mat();
+  }
+  cv::Mat essentialMatrix = K2.t() * fundamentalMatrix * K1;
+  return essentialMatrix;
+}
+void SFMFrontend::TestEssentialMatrix(const std::vector<cv::Point2f> &points1,
+                                      const std::vector<cv::Point2f> &points2,
+                                      const cv::Mat &essentialMatrix,
+                                      const cv::Mat &K1, const cv::Mat &K2,
+                                      const cv::Mat &img1,
+                                      const cv::Mat &img2) {
+  // 1. 创建用于显示的输出图像
+  cv::Mat outImg;
+  cv::hconcat(img1, img2, outImg);
+
+  // 确保点对数量相等
+  if (points1.size() != points2.size()) {
+    std::cerr << Console::ERROR << "点集数量不匹配" << std::endl;
+    return;
+  }
+
+  // 2. 计算对极约束误差
+  double totalError = 0.0;
+  std::vector<double> errors;
+
+  // 转换为归一化坐标
+  std::vector<cv::Point2f> normPoints1, normPoints2;
+  cv::undistortPoints(points1, normPoints1, K1, cv::Mat());
+  cv::undistortPoints(points2, normPoints2, K2, cv::Mat());
+
+  for (size_t i = 0; i < normPoints1.size(); i++) {
+    // 将归一化点转换为齐次坐标
+    cv::Mat p1 =
+        (cv::Mat_<double>(3, 1) << normPoints1[i].x, normPoints1[i].y, 1.0);
+    cv::Mat p2 =
+        (cv::Mat_<double>(3, 1) << normPoints2[i].x, normPoints2[i].y, 1.0);
+
+    // 计算对极约束误差: x2'^T * E * x1' 应接近0
+    cv::Mat error = p2.t() * essentialMatrix * p1;
+    double err = std::abs(error.at<double>(0, 0));
+    errors.push_back(err);
+    totalError += err;
+
+    // 3. 在图像上绘制对应点
+    cv::circle(outImg, points1[i], 3, cv::Scalar(0, 0, 255), -1);
+    cv::circle(outImg, cv::Point2f(points2[i].x + img1.cols, points2[i].y), 3,
+               cv::Scalar(0, 0, 255), -1);
+    cv::line(outImg, points1[i],
+             cv::Point2f(points2[i].x + img1.cols, points2[i].y),
+             cv::Scalar(0, 255, 0), 1);
+  }
+
+  // 4. 验证本质矩阵的代数性质
+  cv::SVD svd(essentialMatrix, cv::SVD::FULL_UV);
+  std::vector<double> singularValues = {
+      svd.w.at<double>(0), svd.w.at<double>(1), svd.w.at<double>(2)};
+
+  // 从本质矩阵恢复相对姿态
+  cv::Mat R1, R2, t;
+  cv::decomposeEssentialMat(essentialMatrix, R1, R2, t);
+
+  // 绘制一些对极线
+  const int numLinesToDraw = std::min(10, static_cast<int>(points1.size()));
+  std::vector<int> indices(points1.size());
+  for (size_t i = 0; i < indices.size(); i++)
+    indices[i] = i;
+  std::random_shuffle(indices.begin(), indices.end());
+
+  for (int i = 0; i < numLinesToDraw; i++) {
+    int idx = indices[i];
+
+    // 计算对极线
+    cv::Mat p1 =
+        (cv::Mat_<double>(3, 1) << normPoints1[idx].x, normPoints1[idx].y, 1.0);
+    cv::Mat epiline1 = essentialMatrix * p1;
+
+    // 将对极线从归一化坐标转回像素坐标
+    double a = epiline1.at<double>(0);
+    double b = epiline1.at<double>(1);
+    double c = epiline1.at<double>(2);
+
+    // 归一化线参数
+    double norm = std::sqrt(a * a + b * b);
+    a /= norm;
+    b /= norm;
+    c /= norm;
+
+    // 将对极线转换到像素坐标系下
+    cv::Mat lineInPixels = K2.t() * epiline1;
+    a = lineInPixels.at<double>(0);
+    b = lineInPixels.at<double>(1);
+    c = lineInPixels.at<double>(2);
+
+    // 归一化
+    norm = std::sqrt(a * a + b * b);
+    a /= norm;
+    b /= norm;
+    c /= norm;
+
+    // 求线与图像边界的交点
+    double x0 = 0, x1 = img2.cols;
+    double y0 = (-c - a * x0) / b;
+    double y1 = (-c - a * x1) / b;
+
+    // 绘制对极线
+    cv::line(outImg, cv::Point(x0 + img1.cols, y0),
+             cv::Point(x1 + img1.cols, y1), cv::Scalar(255, 0, 0), 1);
+  }
+
+  // 5. 显示统计信息与评估
+  double avgError = totalError / normPoints1.size();
+
+  // 整理输出结果
+  std::cout << Console::TEST
+            << "========== 本质矩阵测试结果 ==========" << std::endl;
+  std::cout << Console::TEST << "┌───────────────────┬───────────────┐"
+            << std::endl;
+  std::cout << Console::TEST << "│ 平均对极约束误差  │ " << std::fixed
+            << std::setprecision(8) << std::setw(13) << avgError << " │"
+            << std::endl;
+
+  // 计算中位数误差
+  std::sort(errors.begin(), errors.end());
+  double medianError = errors[errors.size() / 2];
+  std::cout << Console::TEST << "│ 中位数对极约束误差│ " << std::fixed
+            << std::setprecision(8) << std::setw(13) << medianError << " │"
+            << std::endl;
+
+  // 显示奇异值
+  std::cout << Console::TEST << "│ 奇异值比率 σ1/σ2  │ " << std::fixed
+            << std::setprecision(8) << std::setw(13)
+            << singularValues[0] / singularValues[1] << " │" << std::endl;
+  std::cout << Console::TEST << "│ 最小奇异值 σ3     │ " << std::fixed
+            << std::setprecision(8) << std::setw(13) << singularValues[2]
+            << " │" << std::endl;
+  std::cout << Console::TEST << "└───────────────────┴───────────────┘"
+            << std::endl;
+
+  // 恢复的旋转和平移
+  std::cout << Console::TEST << "恢复的相对姿态:" << std::endl;
+  std::cout << Console::TEST << "  旋转矩阵 R1:" << std::endl;
+  for (int i = 0; i < 3; i++) {
+    std::cout << Console::TEST << "    [";
+    for (int j = 0; j < 3; j++) {
+      std::cout << std::setw(10) << std::fixed << std::setprecision(6)
+                << R1.at<double>(i, j);
+      if (j < 2)
+        std::cout << ", ";
+    }
+    std::cout << "]" << std::endl;
+  }
+
+  std::cout << Console::TEST << "  平移向量 t:" << std::endl;
+  std::cout << Console::TEST << "    [" << std::setw(10) << t.at<double>(0)
+            << ", " << std::setw(10) << t.at<double>(1) << ", " << std::setw(10)
+            << t.at<double>(2) << "]" << std::endl;
+
+  // 评估结果
+  std::string qualityAssessment;
+  if (medianError < 0.005)
+    qualityAssessment = "优秀";
+  else if (medianError < 0.01)
+    qualityAssessment = "良好";
+  else if (medianError < 0.02)
+    qualityAssessment = "可接受";
+  else
+    qualityAssessment = "较差";
+
+  std::cout << Console::TEST << "本质矩阵质量评估: " << qualityAssessment
+            << std::endl;
+  std::cout << Console::TEST
+            << "======================================" << std::endl;
+
+  // 显示结果图像
+  cv::imshow("Essential Matrix Test", outImg);
 }
 } // namespace pre
