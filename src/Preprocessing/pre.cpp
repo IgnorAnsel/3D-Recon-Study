@@ -8,7 +8,8 @@ CameraPreprocessor::CameraPreprocessor(const std::string &calibFilePath) {
 bool CameraPreprocessor::loadCameraParams(const std::string &calibFilePath) {
   cv::FileStorage fs(calibFilePath, cv::FileStorage::READ);
   if (!fs.isOpened()) {
-    std::cerr << "Failed to open camera calibration file: " << calibFilePath
+    std::cerr << Console::ERROR << "[CameraPreprocessor::loadCameraParams]"
+              << "Failed to open camera calibration file: " << calibFilePath
               << std::endl;
     return false;
   }
@@ -28,7 +29,8 @@ cv::Mat CameraPreprocessor::undistort(const cv::Mat &image) const {
   if (intrinsicMatrix_.empty() || distortionCoefficients_.empty()) {
     std::cerr
         << Console::WARNING
-        << "CameraPreprocessor: Camera parameters are not set: Please use "
+        << "[CameraPreprocessor::udistort] Camera parameters are not set: "
+           "Please use "
            "loadCameraParams() first"
         << std::endl;
 
