@@ -1,6 +1,7 @@
 #ifndef PCLPROCESSING_H
 #define PCLPROCESSING_H
 
+#include "config.h"
 #include <opencv2/opencv.hpp>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
@@ -20,6 +21,7 @@ public:
   PCLProcessing();
   bool initPCL();                             // 初始化PCL(默认)
   bool initPCL(const std::string &cloudPath); // 初始化PCL(从文件中读取点云)
+  bool initPCLWithNoCloud();
   template <typename PointT>
   bool initPCL(const pcl::PointCloud<PointT> &cloud,
                const std::string viewerName =

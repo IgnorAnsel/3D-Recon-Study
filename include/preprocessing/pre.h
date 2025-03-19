@@ -1,11 +1,11 @@
 #ifndef PRE_H
 #define PRE_H
 
+#include "config.h"
 #include <fstream>
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <string>
-
 namespace pre {
 class CameraPreprocessor {
 public:

@@ -431,4 +431,166 @@ void SFMFrontend::TestEssentialMatrix(const std::vector<cv::Point2f> &points1,
   // 显示结果图像
   cv::imshow("Essential Matrix Test", outImg);
 }
+void SFMFrontend::ComputePoseFromEssentialMatrix(
+    const cv::Mat &E, const std::vector<cv::Point2f> &points1,
+    const std::vector<cv::Point2f> &points2, const cv::Mat &K, cv::Mat &R,
+    cv::Mat &t) {
+  std::vector<cv::Point2f> normalizedPts1, normalizedPts2;
+  cv::undistortPoints(points1, normalizedPts1, K, cv::Mat());
+  cv::undistortPoints(points2, normalizedPts2, K, cv::Mat());
+
+  // 使用OpenCV的内置函数分解本质矩阵并恢复姿态
+  cv::Mat mask;
+  int inliers =
+      cv::recoverPose(E, normalizedPts1, normalizedPts2, K, R, t, mask);
+
+  std::cout << Console::INFO << "从本质矩阵恢复相机姿态:" << std::endl;
+  std::cout << Console::INFO << "  • 内点数量: " << inliers << "/"
+            << points1.size() << std::endl;
+  std::cout << Console::INFO << "  • 旋转矩阵 R:" << std::endl;
+  for (int i = 0; i < 3; i++) {
+    std::cout << Console::INFO << "    [";
+    for (int j = 0; j < 3; j++) {
+      std::cout << std::setw(10) << std::fixed << std::setprecision(6)
+                << R.at<double>(i, j);
+      if (j < 2)
+        std::cout << ", ";
+    }
+    std::cout << "]" << std::endl;
+  }
+
+  std::cout << Console::INFO << "  • 平移向量 t:" << std::endl;
+  std::cout << Console::INFO << "    [" << std::setw(10) << t.at<double>(0)
+            << ", " << std::setw(10) << t.at<double>(1) << ", " << std::setw(10)
+            << t.at<double>(2) << "]" << std::endl;
+  return;
+}
+std::vector<cv::Point3f>
+SFMFrontend::robustTriangulate(const std::vector<cv::Point2f> &points1,
+                               const std::vector<cv::Point2f> &points2,
+                               const cv::Mat &K, const cv::Mat &R1,
+                               const cv::Mat &t1, const cv::Mat &R2,
+                               const cv::Mat &t2, float reprojectionThreshold) {
+
+  // 计算投影矩阵
+  cv::Mat P1 = cv::Mat::zeros(3, 4, CV_64F);
+  cv::Mat P2 = cv::Mat::zeros(3, 4, CV_64F);
+
+  R1.copyTo(P1.colRange(0, 3));
+  t1.copyTo(P1.col(3));
+  P1 = K * P1;
+
+  R2.copyTo(P2.colRange(0, 3));
+  t2.copyTo(P2.col(3));
+  P2 = K * P2;
+
+  // 三角化所有点
+  cv::Mat points4D;
+  cv::triangulatePoints(P1, P2, points1, points2, points4D);
+
+  // 将点转换为3D点并进行重投影测试
+  std::vector<cv::Point3f> points3D;
+  std::vector<bool> inliers(points1.size(), false);
+
+  for (int i = 0; i < points4D.cols; ++i) {
+    // 转换为三维点
+    cv::Mat X = points4D.col(i);
+    X /= X.at<float>(3, 0);
+
+    cv::Point3f point3D(X.at<float>(0, 0), X.at<float>(1, 0),
+                        X.at<float>(2, 0));
+
+    // 重投影测试
+    cv::Mat X3D = (cv::Mat_<float>(4, 1) << point3D.x, point3D.y, point3D.z, 1);
+
+    // 重投影到相机1
+    // 确保两个矩阵具有相同的数据类型
+    cv::Mat X3D_converted;
+    X3D.convertTo(X3D_converted, P1.type());
+
+    // 执行乘法
+    cv::Mat x1 = P1 * X3D_converted;
+    cv::Point2f reprojPoint1(x1.at<float>(0) / x1.at<float>(2),
+                             x1.at<float>(1) / x1.at<float>(2));
+    float error1 = cv::norm(reprojPoint1 - points1[i]);
+
+    // 重投影到相机2
+    cv::Mat x2 = P2 * X3D_converted;
+    cv::Point2f reprojPoint2(x2.at<float>(0) / x2.at<float>(2),
+                             x2.at<float>(1) / x2.at<float>(2));
+    float error2 = cv::norm(reprojPoint2 - points2[i]);
+
+    // 检查重投影误差
+    if (error1 < reprojectionThreshold && error2 < reprojectionThreshold) {
+      inliers[i] = true;
+      points3D.push_back(point3D);
+    }
+  }
+
+  std::cout << "Triangulation inliers: "
+            << std::count(inliers.begin(), inliers.end(), true) << "/"
+            << points1.size() << std::endl;
+
+  return points3D;
+}
+pcl::PointCloud<pcl::PointXYZRGB>::Ptr
+SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
+                                 const std::vector<cv::Point2f> &imagePoints,
+                                 const cv::Mat &image) {
+
+  // 创建PCL点云
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGB>);
+
+  // 设置点云基本属性
+  cloud->width = points3D.size();
+  cloud->height = 1;       // 无序点云
+  cloud->is_dense = false; // 可能包含无效点
+  cloud->points.resize(points3D.size());
+
+  bool hasColor = !image.empty() && imagePoints.size() == points3D.size();
+
+  // 转换每个点
+  for (size_t i = 0; i < points3D.size(); ++i) {
+    // 复制坐标
+    cloud->points[i].x = points3D[i].x;
+    cloud->points[i].y = points3D[i].y;
+    cloud->points[i].z = points3D[i].z;
+
+    // 添加颜色信息
+    if (hasColor) {
+      int x = static_cast<int>(std::round(imagePoints[i].x));
+      int y = static_cast<int>(std::round(imagePoints[i].y));
+
+      // 检查点是否在图像范围内
+      if (x >= 0 && x < image.cols && y >= 0 && y < image.rows) {
+        if (image.channels() == 3) {
+          // BGR图像
+          cv::Vec3b color = image.at<cv::Vec3b>(y, x);
+          cloud->points[i].b = color[0];
+          cloud->points[i].g = color[1];
+          cloud->points[i].r = color[2];
+        } else if (image.channels() == 1) {
+          // 灰度图像
+          uchar gray = image.at<uchar>(y, x);
+          cloud->points[i].r = gray;
+          cloud->points[i].g = gray;
+          cloud->points[i].b = gray;
+        }
+      } else {
+        // 默认颜色：白色
+        cloud->points[i].r = 255;
+        cloud->points[i].g = 255;
+        cloud->points[i].b = 255;
+      }
+    } else {
+      // 无颜色信息时使用默认颜色：白色
+      cloud->points[i].r = 255;
+      cloud->points[i].g = 255;
+      cloud->points[i].b = 255;
+    }
+  }
+
+  return cloud;
+}
 } // namespace pre

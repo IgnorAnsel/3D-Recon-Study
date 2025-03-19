@@ -1,4 +1,5 @@
 #include "preprocessing/pre.h"
+#include "preprocessing/config.h"
 #include "preprocessing/console.h"
 namespace pre {
 CameraPreprocessor::CameraPreprocessor() {}
@@ -13,8 +14,20 @@ bool CameraPreprocessor::loadCameraParams(const std::string &calibFilePath) {
               << std::endl;
     return false;
   }
+
   fs["cameraMatrix"] >> intrinsicMatrix_;
   fs["distCoeffs"] >> distortionCoefficients_;
+  // 相机标定信息加载
+  DEBUG("━━━━━━━━━━━━━━━━━ 相机标定信息 ━━━━━━━━━━━━━━━━━");
+  DEBUG("● 已成功加载相机标定文件:");
+  DEBUG("  └─ " << calibFilePath);
+  DEBUG("");
+  DEBUG("● 内参矩阵:");
+  DEBUG_MATRIX(intrinsicMatrix_);
+  DEBUG("");
+  DEBUG("● 畸变系数:");
+  DEBUG_VECTOR(distortionCoefficients_);
+  DEBUG("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   fs.release();
   return true;
 }

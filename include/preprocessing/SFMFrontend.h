@@ -1,11 +1,17 @@
 #ifndef SFMFrontend_H
 #define SFMFrontend_H
+#include "config.h"
 #include "opencv2/features2d.hpp"
 #include "opencv2/opencv.hpp"
 #include <iostream>
+#include <opencv2/core/mat.hpp>
 #include <opencv2/core/types.hpp>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/visualization/pcl_visualizer.h>
+#include <utility>
 #include <vector>
-
 namespace pre {
 enum FeatureDetectorType {
   SIFT,
@@ -73,6 +79,21 @@ public:
                            const cv::Mat &essentialMatrix, const cv::Mat &K1,
                            const cv::Mat &K2, const cv::Mat &img1,
                            const cv::Mat &img2);
+  void ComputePoseFromEssentialMatrix(const cv::Mat &E,
+                                      const std::vector<cv::Point2f> &points1,
+                                      const std::vector<cv::Point2f> &points2,
+                                      const cv::Mat &K, cv::Mat &R,
+                                      cv::Mat &t); // 从本质矩阵计算姿态
+  std::vector<cv::Point3f>
+  robustTriangulate(const std::vector<cv::Point2f> &points1,
+                    const std::vector<cv::Point2f> &points2, const cv::Mat &K,
+                    const cv::Mat &R1, const cv::Mat &t1, const cv::Mat &R2,
+                    const cv::Mat &t2,
+                    float reprojectionThreshold = 5.0); // 稳健三角化
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr convertToPointCloud(
+      const std::vector<cv::Point3f> &points3D,
+      const std::vector<cv::Point2f> &imagePoints = std::vector<cv::Point2f>(),
+      const cv::Mat &image = cv::Mat());
   ~SFMFrontend();
 
 private:
