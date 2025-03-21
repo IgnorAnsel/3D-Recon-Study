@@ -495,13 +495,15 @@ SFMFrontend::robustTriangulate(const std::vector<cv::Point2f> &points1,
   for (int i = 0; i < points4D.cols; ++i) {
     // 转换为三维点
     cv::Mat X = points4D.col(i);
-    X /= X.at<float>(3, 0);
+    X /= X.at<double>(3, 0);
 
-    cv::Point3f point3D(X.at<float>(0, 0), X.at<float>(1, 0),
-                        X.at<float>(2, 0));
+    cv::Point3f point3D(static_cast<float>(X.at<double>(0, 0)),
+                        static_cast<float>(X.at<double>(1, 0)),
+                        static_cast<float>(X.at<double>(2, 0)));
 
     // 重投影测试
-    cv::Mat X3D = (cv::Mat_<float>(4, 1) << point3D.x, point3D.y, point3D.z, 1);
+    cv::Mat X3D =
+        (cv::Mat_<double>(4, 1) << point3D.x, point3D.y, point3D.z, 1);
 
     // 重投影到相机1
     // 确保两个矩阵具有相同的数据类型
@@ -510,18 +512,20 @@ SFMFrontend::robustTriangulate(const std::vector<cv::Point2f> &points1,
 
     // 执行乘法
     cv::Mat x1 = P1 * X3D_converted;
-    cv::Point2f reprojPoint1(x1.at<float>(0) / x1.at<float>(2),
-                             x1.at<float>(1) / x1.at<float>(2));
+    cv::Point2f reprojPoint1(x1.at<double>(0) / x1.at<double>(2),
+                             x1.at<double>(1) / x1.at<double>(2));
     float error1 = cv::norm(reprojPoint1 - points1[i]);
 
     // 重投影到相机2
     cv::Mat x2 = P2 * X3D_converted;
-    cv::Point2f reprojPoint2(x2.at<float>(0) / x2.at<float>(2),
-                             x2.at<float>(1) / x2.at<float>(2));
+    cv::Point2f reprojPoint2(x2.at<double>(0) / x2.at<double>(2),
+                             x2.at<double>(1) / x2.at<double>(2));
     float error2 = cv::norm(reprojPoint2 - points2[i]);
-
+    std::cout << Console::INFO << "Reprojection error: " << error1 << ", "
+              << error2 << std::endl;
     // 检查重投影误差
     if (error1 < reprojectionThreshold && error2 < reprojectionThreshold) {
+
       inliers[i] = true;
       points3D.push_back(point3D);
     }
@@ -541,7 +545,7 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
   // 创建PCL点云
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZRGB>);
-
+  std::cout << Console::INFO << points3D.size() << std::endl;
   // 设置点云基本属性
   cloud->width = points3D.size();
   cloud->height = 1;       // 无序点云
@@ -556,7 +560,8 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
     cloud->points[i].x = points3D[i].x;
     cloud->points[i].y = points3D[i].y;
     cloud->points[i].z = points3D[i].z;
-
+    std::cout << Console::INFO << cloud->points[i].x << ","
+              << cloud->points[i].y << "m" << cloud->points[i].z << std::endl;
     // 添加颜色信息
     if (hasColor) {
       int x = static_cast<int>(std::round(imagePoints[i].x));

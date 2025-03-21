@@ -31,10 +31,12 @@ int main() {
   pclProcessor.addCamera(R1, t1, 0, img1Path);
   pclProcessor.addCamera(R, t, 1, img2Path);
   std::vector<cv::Point3f> points3D =
-      sfmFrontend.robustTriangulate(points1, points2, K, R1, t1, R, t);
+      sfmFrontend.robustTriangulate(points1, points2, K, R1, t1, R, t, 1000);
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
       sfmFrontend.convertToPointCloud(points3D, points1, img1);
-  pclProcessor.addPointCloud(*cloud);
+  std::cout << "cloud size: " << cloud->size() << std::endl;
+  pclProcessor.setGlobalCloud(cloud);
+  pclProcessor.addPointCloud(*cloud, "test");
 
   while (!pclProcessor.getViewer()->wasStopped()) {
     pclProcessor.getViewer()->spinOnce(100);
