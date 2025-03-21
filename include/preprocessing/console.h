@@ -1,9 +1,9 @@
 #ifndef CONSOLE_H
 #define CONSOLE_H
 
+#include "config.h"
 #include <iostream>
 #include <string>
-
 /**
  * @brief 控制台输出工具类
  *

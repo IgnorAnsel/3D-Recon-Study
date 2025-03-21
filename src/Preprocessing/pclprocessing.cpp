@@ -1,4 +1,5 @@
 #include "preprocessing/pclprocessing.h"
+#include "preprocessing/console.h"
 
 // pc => pclprocessing
 namespace pre {
@@ -12,6 +13,17 @@ bool PCLProcessing::initPCL() {
   viewer_->setBackgroundColor(0, 0, 0);
 
   isInit_ = true;
+  return true;
+}
+bool PCLProcessing::initPCLWithNoCloud() {
+  if (isInit_)
+    return false;
+  viewer_ = pcl::visualization::PCLVisualizer::Ptr(
+      new pcl::visualization::PCLVisualizer("PCL Viewer"));
+  viewer_->setBackgroundColor(0, 0, 0);
+  isInit_ = true;
+  globalCloud_ = pcl::PointCloud<pcl::PointXYZRGB>::Ptr(
+      new pcl::PointCloud<pcl::PointXYZRGB>());
   return true;
 }
 bool PCLProcessing::initPCL(const std::string &cloudPath) {
@@ -83,9 +95,11 @@ bool PCLProcessing::addCamera(const cv::Mat &R, const cv::Mat &t, int frameId,
   return true;
 }
 void PCLProcessing::visualizeCameraInPointCloud(const CameraInfo &camera) {
-  if (!globalCloud_ || !viewer_)
+  if (!globalCloud_ || !viewer_) {
+    std::cerr << Console::WARNING
+              << "Global cloud or viewer is not initialized!" << std::endl;
     return;
-
+  }
   // 计算相机中心
   cv::Mat C = -camera.R.t() * camera.t;
   double px = C.at<double>(0, 0);
@@ -131,6 +145,7 @@ void PCLProcessing::visualizeCameraInPointCloud(const CameraInfo &camera) {
   transform.rotate(rotation);
 
   std::string coordID = "camera_coord_" + std::to_string(camera.frameId);
+
   viewer_->addCoordinateSystem(0.5, transform, coordID);
 }
 void PCLProcessing::setGlobalCloud(
@@ -140,4 +155,8 @@ void PCLProcessing::setGlobalCloud(
 pcl::visualization::PCLVisualizer::Ptr PCLProcessing::getViewer() {
   return viewer_;
 }
+template bool PCLProcessing::addPointCloud<pcl::PointXYZRGB>(
+    const pcl::PointCloud<pcl::PointXYZRGB> &cloud);
+template bool PCLProcessing::addPointCloud<pcl::PointXYZ>(
+    const pcl::PointCloud<pcl::PointXYZ> &cloud);
 } // namespace pre
