@@ -1,5 +1,6 @@
 #include "preprocessing/SFMFrontend.h"
 #include "preprocessing/console.h"
+#include <opencv2/core.hpp>
 namespace pre {
 SFMFrontend::SFMFrontend() {}
 SFMFrontend::SFMFrontend(FeatureDetectorType detector_type) {}
@@ -97,7 +98,7 @@ void SFMFrontend::GetGoodMatches(const cv::Mat &img1, const cv::Mat &img2,
   }
   detectFeatures(img1, keypoints1, descriptors1, detectorType);
   detectFeatures(img2, keypoints2, descriptors2, detectorType);
-  matches = matchFeatures(descriptors1, descriptors2);
+  matches = matchFeatures(descriptors1, descriptors2, 0.7);
   GetGoodMatches(matches, keypoints1, keypoints2, points1, points2);
 }
 
@@ -257,7 +258,12 @@ cv::Mat SFMFrontend::ComputeEssentialMatrix(const cv::Mat &K1,
               << std::endl;
     return cv::Mat();
   }
-  cv::Mat essentialMatrix = K2.t() * fundamentalMatrix * K1;
+  cv::Mat U, D, Vt;
+  cv::SVDecomp(fundamentalMatrix, D, U, Vt,
+               cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
+  cv::Mat Dn = cv::Mat::eye(3, 3, CV_64F);
+  Dn.at<double>(2, 2) = 0;
+  cv::Mat essentialMatrix = U * Dn * Vt;
   return essentialMatrix;
 }
 void SFMFrontend::TestEssentialMatrix(const std::vector<cv::Point2f> &points1,
@@ -280,11 +286,12 @@ void SFMFrontend::TestEssentialMatrix(const std::vector<cv::Point2f> &points1,
   double totalError = 0.0;
   std::vector<double> errors;
 
-  // 转换为归一化坐标
+  // // 转换为归一化坐标
   std::vector<cv::Point2f> normPoints1, normPoints2;
-  cv::undistortPoints(points1, normPoints1, K1, cv::Mat());
-  cv::undistortPoints(points2, normPoints2, K2, cv::Mat());
-
+  // cv::undistortPoints(points1, normPoints1, K1, cv::Mat());
+  // cv::undistortPoints(points2, normPoints2, K2, cv::Mat());
+  normPoints1 = points1;
+  normPoints2 = points2;
   for (size_t i = 0; i < normPoints1.size(); i++) {
     // 将归一化点转换为齐次坐标
     cv::Mat p1 =
@@ -435,15 +442,16 @@ void SFMFrontend::ComputePoseFromEssentialMatrix(
     const cv::Mat &E, const std::vector<cv::Point2f> &points1,
     const std::vector<cv::Point2f> &points2, const cv::Mat &K, cv::Mat &R,
     cv::Mat &t) {
-  std::vector<cv::Point2f> normalizedPts1, normalizedPts2;
-  cv::undistortPoints(points1, normalizedPts1, K, cv::Mat());
-  cv::undistortPoints(points2, normalizedPts2, K, cv::Mat());
+  // 在这之前，已经对图像进行了畸变校正
+  // std::vector<cv::Point2f> normalizedPts1, normalizedPts2;
+  // cv::undistortPoints(points1, normalizedPts1, K, cv::Mat());
+  // cv::undistortPoints(points2, normalizedPts2, K, cv::Mat());
 
   // 使用OpenCV的内置函数分解本质矩阵并恢复姿态
   cv::Mat mask;
-  int inliers =
-      cv::recoverPose(E, normalizedPts1, normalizedPts2, K, R, t, mask);
-
+  // int inliers =
+  //     cv::recoverPose(E, normalizedPts1, normalizedPts2, K, R, t, mask);
+  int inliers = cv::recoverPose(E, points1, points2, K, R, t, mask);
   std::cout << Console::INFO << "从本质矩阵恢复相机姿态:" << std::endl;
   std::cout << Console::INFO << "  • 内点数量: " << inliers << "/"
             << points1.size() << std::endl;
@@ -463,6 +471,7 @@ void SFMFrontend::ComputePoseFromEssentialMatrix(
   std::cout << Console::INFO << "    [" << std::setw(10) << t.at<double>(0)
             << ", " << std::setw(10) << t.at<double>(1) << ", " << std::setw(10)
             << t.at<double>(2) << "]" << std::endl;
+
   return;
 }
 std::vector<cv::Point3f>
@@ -500,7 +509,7 @@ SFMFrontend::robustTriangulate(const std::vector<cv::Point2f> &points1,
     cv::Point3f point3D(static_cast<float>(X.at<double>(0, 0)),
                         static_cast<float>(X.at<double>(1, 0)),
                         static_cast<float>(X.at<double>(2, 0)));
-
+    // std::cout << "point3D: " << point3D << std::endl;
     // 重投影测试
     cv::Mat X3D =
         (cv::Mat_<double>(4, 1) << point3D.x, point3D.y, point3D.z, 1);
@@ -521,9 +530,8 @@ SFMFrontend::robustTriangulate(const std::vector<cv::Point2f> &points1,
     cv::Point2f reprojPoint2(x2.at<double>(0) / x2.at<double>(2),
                              x2.at<double>(1) / x2.at<double>(2));
     float error2 = cv::norm(reprojPoint2 - points2[i]);
-    std::cout << Console::INFO << "Reprojection error: " << error1 << ", "
-              << error2 << std::endl;
-    // 检查重投影误差
+    // std::cout << "error1: " << error1 << ", error2: " << error2 << std::endl;
+    //  检查重投影误差
     if (error1 < reprojectionThreshold && error2 < reprojectionThreshold) {
 
       inliers[i] = true;
@@ -561,7 +569,7 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
     cloud->points[i].y = points3D[i].y;
     cloud->points[i].z = points3D[i].z;
     std::cout << Console::INFO << cloud->points[i].x << ","
-              << cloud->points[i].y << "m" << cloud->points[i].z << std::endl;
+              << cloud->points[i].y << "," << cloud->points[i].z << std::endl;
     // 添加颜色信息
     if (hasColor) {
       int x = static_cast<int>(std::round(imagePoints[i].x));
@@ -598,4 +606,40 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
 
   return cloud;
 }
+std::vector<cv::Point3f>
+SFMFrontend::scaleToVisibleRange(std::vector<cv::Point3f> &points3D) {
+  if (points3D.empty()) {
+    std::cerr << "Error: No 3D points available for scaling!" << std::endl;
+    return points3D;
+  }
+
+  // 计算每个坐标轴的最小值和最大值
+  float minX = points3D[0].x, maxX = points3D[0].x;
+  float minY = points3D[0].y, maxY = points3D[0].y;
+  float minZ = points3D[0].z, maxZ = points3D[0].z;
+
+  for (const auto &point : points3D) {
+    minX = std::min(minX, point.x);
+    maxX = std::max(maxX, point.x);
+    minY = std::min(minY, point.y);
+    maxY = std::max(maxY, point.y);
+    minZ = std::min(minZ, point.z);
+    maxZ = std::max(maxZ, point.z);
+  }
+
+  // 计算每个坐标轴的缩放因子，目标范围是1e7到1e9之间
+  float scaleFactorX = 10000000.0f / (maxX - minX);
+  float scaleFactorY = 1000000000.0f / (maxY - minY);
+  float scaleFactorZ = 10000000.0f / (maxZ - minZ);
+
+  // 对所有点进行缩放
+  for (auto &point : points3D) {
+    point.x = point.x * scaleFactorX;
+    point.y = point.y * scaleFactorY;
+    point.z = point.z * scaleFactorZ;
+  }
+
+  return points3D;
+}
+
 } // namespace pre

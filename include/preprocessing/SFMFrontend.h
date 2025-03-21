@@ -94,6 +94,8 @@ public:
       const std::vector<cv::Point3f> &points3D,
       const std::vector<cv::Point2f> &imagePoints = std::vector<cv::Point2f>(),
       const cv::Mat &image = cv::Mat());
+  std::vector<cv::Point3f>
+  scaleToVisibleRange(std::vector<cv::Point3f> &points3D);
   ~SFMFrontend();
 
 private:
