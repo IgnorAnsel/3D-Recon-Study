@@ -96,6 +96,7 @@ public:
       const cv::Mat &image = cv::Mat());
   std::vector<cv::Point3f>
   scaleToVisibleRange(std::vector<cv::Point3f> &points3D);
+  std::vector<cv::Point3f> homogeneous2euclidean(const cv::Mat &points4D);
   ~SFMFrontend();
 
 private:

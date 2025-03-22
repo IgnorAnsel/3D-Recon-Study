@@ -631,5 +631,35 @@ SFMFrontend::scaleToVisibleRange(std::vector<cv::Point3f> &points3D) {
 
   return points3D;
 }
+std::vector<cv::Point3f>
+SFMFrontend::homogeneous2euclidean(const cv::Mat &points4D) {
+  // CV_Assert(points4D.rows == 4);  // 确保是4行N列的齐次坐标
+  // CV_Assert(points4D.type() == CV_32F || points4D.type() == CV_64F); //
+  // 支持浮点或双精度
 
+  const int num_points = points4D.cols; // 点的数量
+  std::vector<cv::Point3f> points3D;
+  points3D.reserve(num_points);
+
+  for (int i = 0; i < num_points; ++i) {
+    // 获取第i个点的齐次坐标 (x, y, z, w)
+    const double *p4 = points4D.ptr<double>(0) + 4 * i; // 假设双精度输入
+    const double w = p4[3];                             // 第4个分量是w
+
+    if (std::abs(w) < 1e-9) {
+      points3D.emplace_back(0, 0, 0); // 无效点设为原点（或抛出异常）
+      continue;
+    }
+
+    const double inv_w = 1.0 / w;
+    const double x = p4[0] * inv_w;
+    const double y = p4[1] * inv_w;
+    const double z = p4[2] * inv_w;
+
+    points3D.emplace_back(static_cast<float>(x), static_cast<float>(y),
+                          static_cast<float>(z));
+  }
+
+  return points3D;
+}
 } // namespace pre
