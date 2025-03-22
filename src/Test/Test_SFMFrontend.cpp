@@ -37,7 +37,7 @@ int main() {
   pclProcessor.addCamera(R2, t2, 1, img2Path);
   std::vector<cv::Point3f> points3D =
       sfmFrontend.robustTriangulate(points1, points2, K, R1, t1, R2, t2, 10000);
-  points3D = sfmFrontend.scaleToVisibleRange(points3D);
+  // points3D = sfmFrontend.scaleToVisibleRange(points3D);
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
       sfmFrontend.convertToPointCloud(points3D, points1, img1);
   std::cout << "cloud size: " << cloud->size() << std::endl;

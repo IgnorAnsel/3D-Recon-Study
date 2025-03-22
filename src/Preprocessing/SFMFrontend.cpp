@@ -456,21 +456,10 @@ void SFMFrontend::ComputePoseFromEssentialMatrix(
   std::cout << Console::INFO << "  • 内点数量: " << inliers << "/"
             << points1.size() << std::endl;
   std::cout << Console::INFO << "  • 旋转矩阵 R:" << std::endl;
-  for (int i = 0; i < 3; i++) {
-    std::cout << Console::INFO << "    [";
-    for (int j = 0; j < 3; j++) {
-      std::cout << std::setw(10) << std::fixed << std::setprecision(6)
-                << R.at<double>(i, j);
-      if (j < 2)
-        std::cout << ", ";
-    }
-    std::cout << "]" << std::endl;
-  }
+  std::cout << Console::INFO << R << std::endl;
 
   std::cout << Console::INFO << "  • 平移向量 t:" << std::endl;
-  std::cout << Console::INFO << "    [" << std::setw(10) << t.at<double>(0)
-            << ", " << std::setw(10) << t.at<double>(1) << ", " << std::setw(10)
-            << t.at<double>(2) << "]" << std::endl;
+  std::cout << Console::INFO << t << std::endl;
 
   return;
 }
@@ -500,44 +489,45 @@ SFMFrontend::robustTriangulate(const std::vector<cv::Point2f> &points1,
   // 将点转换为3D点并进行重投影测试
   std::vector<cv::Point3f> points3D;
   std::vector<bool> inliers(points1.size(), false);
+  cv::convertPointsFromHomogeneous(points4D.t(), points3D);
 
-  for (int i = 0; i < points4D.cols; ++i) {
-    // 转换为三维点
-    cv::Mat X = points4D.col(i);
-    X /= X.at<double>(3, 0);
+  // for (int i = 0; i < points4D.cols; ++i) {
+  //   // 转换为三维点
+  //   cv::Mat X = points4D.col(i);
+  //   X /= X.at<double>(3, 0);
 
-    cv::Point3f point3D(static_cast<float>(X.at<double>(0, 0)),
-                        static_cast<float>(X.at<double>(1, 0)),
-                        static_cast<float>(X.at<double>(2, 0)));
-    // std::cout << "point3D: " << point3D << std::endl;
-    // 重投影测试
-    cv::Mat X3D =
-        (cv::Mat_<double>(4, 1) << point3D.x, point3D.y, point3D.z, 1);
+  //   cv::Point3f point3D(static_cast<float>(X.at<double>(0, 0)),
+  //                       static_cast<float>(X.at<double>(1, 0)),
+  //                       static_cast<float>(X.at<double>(2, 0)));
+  //   // std::cout << "point3D: " << point3D << std::endl;
+  //   // 重投影测试
+  //   cv::Mat X3D =
+  //       (cv::Mat_<double>(4, 1) << point3D.x, point3D.y, point3D.z, 1);
 
-    // 重投影到相机1
-    // 确保两个矩阵具有相同的数据类型
-    cv::Mat X3D_converted;
-    X3D.convertTo(X3D_converted, P1.type());
+  //   // 重投影到相机1
+  //   // 确保两个矩阵具有相同的数据类型
+  //   cv::Mat X3D_converted;
+  //   X3D.convertTo(X3D_converted, P1.type());
 
-    // 执行乘法
-    cv::Mat x1 = P1 * X3D_converted;
-    cv::Point2f reprojPoint1(x1.at<double>(0) / x1.at<double>(2),
-                             x1.at<double>(1) / x1.at<double>(2));
-    float error1 = cv::norm(reprojPoint1 - points1[i]);
+  //   cv::Mat x1 = P1 * X3D_converted;
+  //   cv::Point2f reprojPoint1(x1.at<double>(0) / x1.at<double>(2),
+  //                            x1.at<double>(1) / x1.at<double>(2));
+  //   float error1 = cv::norm(reprojPoint1 - points1[i]);
 
-    // 重投影到相机2
-    cv::Mat x2 = P2 * X3D_converted;
-    cv::Point2f reprojPoint2(x2.at<double>(0) / x2.at<double>(2),
-                             x2.at<double>(1) / x2.at<double>(2));
-    float error2 = cv::norm(reprojPoint2 - points2[i]);
-    // std::cout << "error1: " << error1 << ", error2: " << error2 << std::endl;
-    //  检查重投影误差
-    if (error1 < reprojectionThreshold && error2 < reprojectionThreshold) {
+  //   // 重投影到相机2
+  //   cv::Mat x2 = P2 * X3D_converted;
+  //   cv::Point2f reprojPoint2(x2.at<double>(0) / x2.at<double>(2),
+  //                            x2.at<double>(1) / x2.at<double>(2));
+  //   float error2 = cv::norm(reprojPoint2 - points2[i]);
+  //   // std::cout << "error1: " << error1 << ", error2: " << error2 <<
+  //   std::endl;
+  //   //  检查重投影误差
+  //   if (error1 < reprojectionThreshold && error2 < reprojectionThreshold) {
 
-      inliers[i] = true;
-      points3D.push_back(point3D);
-    }
-  }
+  //     inliers[i] = true;
+  //     points3D.push_back(point3D);
+  //   }
+  // }
 
   std::cout << "Triangulation inliers: "
             << std::count(inliers.begin(), inliers.end(), true) << "/"
@@ -565,9 +555,9 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
   // 转换每个点
   for (size_t i = 0; i < points3D.size(); ++i) {
     // 复制坐标
-    cloud->points[i].x = points3D[i].x;
-    cloud->points[i].y = points3D[i].y;
-    cloud->points[i].z = points3D[i].z;
+    cloud->points[i].x = points3D[i].x * 1000000;
+    cloud->points[i].y = points3D[i].y * 1000000;
+    cloud->points[i].z = points3D[i].z * 1000000;
     std::cout << Console::INFO << cloud->points[i].x << ","
               << cloud->points[i].y << "," << cloud->points[i].z << std::endl;
     // 添加颜色信息
