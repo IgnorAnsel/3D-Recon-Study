@@ -597,9 +597,9 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
   // 转换每个点
   for (size_t i = 0; i < points3D.size(); ++i) {
     // 复制坐标
-    cloud->points[i].x = points3D[i].x * 1000000;
-    cloud->points[i].y = points3D[i].y * 1000000;
-    cloud->points[i].z = points3D[i].z * 1000000;
+    cloud->points[i].x = points3D[i].x;
+    cloud->points[i].y = points3D[i].y;
+    cloud->points[i].z = points3D[i].z;
     std::cout << Console::INFO << cloud->points[i].x << ","
               << cloud->points[i].y << "," << cloud->points[i].z << std::endl;
     // 添加颜色信息
@@ -719,12 +719,12 @@ void SFMFrontend::twoViewEuclideanReconstruction(
   pclProcessor_.addCamera(R1, t1, 0, img1);
   pclProcessor_.addCamera(R2, t2, 1, img2);
   std::vector<cv::Point3f> points3D =
-      robustTriangulate(points1, points2, K, R1, t1, R2, t2, 10000);
+      robustTriangulate(points1, points2, K, R1, t1, R2, t2, 0.1);
   // points3D = sfmFrontend.scaleToVisibleRange(points3D);
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
       convertToPointCloud(points3D, points1, img1);
   std::cout << "cloud size: " << cloud->size() << std::endl;
-  pclProcessor_.addPointCloud(*cloud, "test");
+  pclProcessor_.addPointCloud(*cloud, std::to_string(time(nullptr)));
 }
 void SFMFrontend::twoViewEuclideanReconstruction(
     cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR, const cv::Mat &Inputt,

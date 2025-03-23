@@ -1,5 +1,6 @@
 #include "preprocessing/pclprocessing.h"
 #include "preprocessing/console.h"
+#include <string>
 
 // pc => pclprocessing
 namespace pre {
@@ -120,57 +121,91 @@ bool PCLProcessing::addCamera(const cv::Mat &R, const cv::Mat &t, int frameId,
 }
 void PCLProcessing::visualizeCameraInPointCloud(const CameraInfo &camera) {
   if (!globalCloud_ || !viewer_) {
-    std::cerr << Console::WARNING
-              << "Global cloud or viewer is not initialized!" << std::endl;
+    std::cerr << "Global cloud or viewer is not initialized!" << std::endl;
     return;
   }
-  // 计算相机中心
+
+  // 计算相机中心（世界坐标系）
   cv::Mat C = -camera.R.t() * camera.t;
   double px = C.at<double>(0, 0);
   double py = C.at<double>(1, 0);
   double pz = C.at<double>(2, 0);
 
-  // 添加相机位置点
+  // 添加相机位置点（红色）
   pcl::PointXYZRGB camPoint;
   camPoint.x = px;
   camPoint.y = py;
   camPoint.z = pz;
-  camPoint.r = 255; // 红色表示相机位置
+  camPoint.r = 255;
   camPoint.g = 0;
   camPoint.b = 0;
   globalCloud_->points.push_back(camPoint);
 
-  // 创建指示相机朝向的箭头
-  std::string arrowID = "camera_dir_" + std::to_string(camera.frameId);
+  // --- 修正1：调整箭头方向 ---
+  // 相机的观察方向是相机坐标系的 +Z 轴方向
+  cv::Mat zAxis = camera.R.col(2); // R 是世界到相机坐标系的旋转矩阵，col(2)
+                                   // 是世界坐标系中的相机 Z 轴方向
+  Eigen::Vector3f direction(zAxis.at<double>(0), zAxis.at<double>(1),
+                            zAxis.at<double>(2));
+  direction.normalize();
 
-  // 计算相机朝向 (z轴方向)
-  cv::Mat zAxis = camera.R.col(2);
-  Eigen::Vector3f direction(zAxis.at<double>(0, 0), zAxis.at<double>(1, 0),
-                            zAxis.at<double>(2, 0));
-
-  // 相机朝向箭头的终点
+  // 箭头应从相机位置指向方向
   pcl::PointXYZ arrowStart(px, py, pz);
   pcl::PointXYZ arrowEnd(px + direction[0], py + direction[1],
                          pz + direction[2]);
 
-  // 添加箭头
-  viewer_->addArrow(arrowEnd, arrowStart, 0, 0, 255, false, arrowID);
+  // 修正箭头参数顺序：起点 -> 终点
+  std::string arrowID = "camera_dir_" + std::to_string(camera.frameId);
+  viewer_->addArrow(arrowEnd, arrowStart, 0, 0, 255, false,
+                    arrowID); // 蓝色箭头
 
-  // 添加相机坐标系
-  Eigen::Matrix3f rotation;
-  for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < 3; j++) {
-      rotation(i, j) = camera.R.at<double>(i, j);
-    }
+  // --- 修正2：正确转换视锥体角点 ---
+  double far_dist = 2.0;             // 远平面距离
+  double fovX = 60.0 * M_PI / 180.0; // 水平视场角
+  double fovY = 45.0 * M_PI / 180.0; // 垂直视场角
+
+  // 计算远平面半宽半高
+  double halfWidth = far_dist * tan(fovX / 2);
+  double halfHeight = far_dist * tan(fovY / 2);
+
+  // 相机坐标系中的远平面角点（Z 轴正方向）
+  std::vector<cv::Mat> cornersCam(4);
+  cornersCam[0] =
+      (cv::Mat_<double>(3, 1) << halfWidth, halfHeight, far_dist); // 右上
+  cornersCam[1] =
+      (cv::Mat_<double>(3, 1) << -halfWidth, halfHeight, far_dist); // 左上
+  cornersCam[2] =
+      (cv::Mat_<double>(3, 1) << -halfWidth, -halfHeight, far_dist); // 左下
+  cornersCam[3] =
+      (cv::Mat_<double>(3, 1) << halfWidth, -halfHeight, far_dist); // 右下
+
+  // 将角点转换到世界坐标系
+  std::vector<pcl::PointXYZ> cornersWorld(4);
+  for (int i = 0; i < 4; ++i) {
+    cv::Mat cornerWorldMat = camera.R.t() * cornersCam[i] + C; // 正确转换公式
+    cornersWorld[i].x = cornerWorldMat.at<double>(0);
+    cornersWorld[i].y = cornerWorldMat.at<double>(1);
+    cornersWorld[i].z = cornerWorldMat.at<double>(2);
   }
 
-  Eigen::Affine3f transform = Eigen::Affine3f::Identity();
-  transform.translation() << px, py, pz;
-  transform.rotate(rotation);
+  // 绘制视锥体连线（黄色）
+  pcl::PointXYZ camPos(px, py, pz);
+  for (int i = 0; i < 4; ++i) {
+    std::string lineId =
+        "cone_line_" + std::to_string(i) + "_" + std::to_string(camera.frameId);
+    viewer_->addLine(camPos, cornersWorld[i], 255, 255, 0,
+                     lineId); // 相机到远平面角点
+  }
 
-  std::string coordID = "camera_coord_" + std::to_string(camera.frameId);
-
-  viewer_->addCoordinateSystem(0.5, transform, coordID);
+  // 绘制远平面四边形
+  viewer_->addLine(cornersWorld[0], cornersWorld[1], 255, 255, 0,
+                   "far_line_0_1" + std::to_string(camera.frameId));
+  viewer_->addLine(cornersWorld[1], cornersWorld[2], 255, 255, 0,
+                   "far_line_1_2" + std::to_string(camera.frameId));
+  viewer_->addLine(cornersWorld[2], cornersWorld[3], 255, 255, 0,
+                   "far_line_2_3" + std::to_string(camera.frameId));
+  viewer_->addLine(cornersWorld[3], cornersWorld[0], 255, 255, 0,
+                   "far_line_3_0" + std::to_string(camera.frameId));
 }
 void PCLProcessing::setGlobalCloud(
     const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud) {
