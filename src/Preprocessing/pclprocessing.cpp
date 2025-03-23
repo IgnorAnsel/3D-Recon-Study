@@ -94,6 +94,30 @@ bool PCLProcessing::addCamera(const cv::Mat &R, const cv::Mat &t, int frameId,
 
   return true;
 }
+bool PCLProcessing::addCamera(const cv::Mat &R, const cv::Mat &t, int frameId,
+                              const cv::Mat &image) {
+  if (!isInit_)
+    return false;
+
+  if (R.empty() || t.empty() || R.type() != CV_64F || t.type() != CV_64F)
+    return false;
+
+  if (R.rows != 3 || R.cols != 3 || t.rows != 3 || t.cols != 1)
+    return false;
+
+  CameraInfo camera;
+  camera.R = R.clone();
+  camera.t = t.clone();
+  camera.frameId = frameId;
+  camera.img = image.clone();
+
+  cameras_.push_back(camera);
+
+  // 可视化相机位置(在点云中添加相机模型)
+  visualizeCameraInPointCloud(camera);
+
+  return true;
+}
 void PCLProcessing::visualizeCameraInPointCloud(const CameraInfo &camera) {
   if (!globalCloud_ || !viewer_) {
     std::cerr << Console::WARNING

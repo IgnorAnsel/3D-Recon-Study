@@ -1,8 +1,16 @@
 #include "preprocessing/SFMFrontend.h"
 #include "preprocessing/console.h"
 #include <opencv2/core.hpp>
+#include <opencv2/core/types.hpp>
 namespace pre {
 SFMFrontend::SFMFrontend() {}
+SFMFrontend::SFMFrontend(const std::string &cameraParamsPath) {
+  preprocessor_.loadCameraParams(cameraParamsPath);
+  pclProcessor_.initPCLWithNoCloud();
+  K = preprocessor_.getIntrinsicMatrix();
+  D = preprocessor_.getDistortionCoefficients();
+}
+
 SFMFrontend::SFMFrontend(FeatureDetectorType detector_type) {}
 SFMFrontend::~SFMFrontend() {}
 void SFMFrontend::createSIFT(int nfeatures, int nOctaveLayers,
@@ -535,6 +543,40 @@ SFMFrontend::robustTriangulate(const std::vector<cv::Point2f> &points1,
 
   return points3D;
 }
+bool SFMFrontend::find_transform(cv::Mat &K, std::vector<cv::KeyPoint> &p1,
+                                 std::vector<cv::KeyPoint> &p2, cv::Mat &R,
+                                 cv::Mat &T, cv::Mat &mask) {
+  //根据内参矩阵获取相机的焦距和光心坐标（主点坐标）
+  double focal_length = 0.5 * (K.at<double>(0) + K.at<double>(4));
+  cv::Point2d principle_point(K.at<double>(2), K.at<double>(5));
+
+  std::vector<cv::Point2f> _p1, _p2;
+  for (int i = 0; i < p1.size(); i++) {
+    _p1.push_back(p1[i].pt);
+    _p2.push_back(p2[i].pt);
+  }
+
+  //根据匹配点求取本征矩阵，使用RANSAC，进一步排除失配点
+  cv::Mat E = cv::findEssentialMat(_p1, _p2, focal_length, principle_point,
+                                   cv::RANSAC, 0.999, 1.0, mask);
+  if (E.empty())
+    return false;
+
+  double feasible_count = cv::countNonZero(mask);
+  std::cout << (int)feasible_count << " -in- " << p1.size() << std::endl;
+  //对于RANSAC而言，outlier数量大于50%时，结果是不可靠的
+  if (feasible_count <= 15 || (feasible_count / p1.size()) < 0.6)
+    return false;
+
+  //分解本征矩阵，获取相对变换
+  int pass_count =
+      cv::recoverPose(E, _p1, _p2, R, T, focal_length, principle_point, mask);
+
+  //同时位于两个相机前方的点的数量要足够大
+  if (((double)pass_count) / feasible_count < 0.7)
+    return false;
+  return true;
+}
 pcl::PointCloud<pcl::PointXYZRGB>::Ptr
 SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
                                  const std::vector<cv::Point2f> &imagePoints,
@@ -662,4 +704,52 @@ SFMFrontend::homogeneous2euclidean(const cv::Mat &points4D) {
 
   return points3D;
 }
+void SFMFrontend::twoViewEuclideanReconstruction(
+    cv::Mat &img1, cv::Mat &img2, FeatureDetectorType detector_type) {
+  img1 = preprocessor_.preprocess(img1);
+  img2 = preprocessor_.preprocess(img2);
+  std::vector<cv::Point2f> points1, points2;
+  GetGoodMatches(img1, img2, points1, points2, detector_type);
+  cv::Mat F = ComputeFundamentalMatrix(points1, points2);
+  cv::Mat E;
+  cv::Mat R2, t2;
+  cv::recoverPose(points1, points2, K, D, K, D, E, R2, t2);
+  cv::Mat R1 = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
+  cv::Mat t1 = (cv::Mat_<double>(3, 1) << 0, 0, 0);
+  pclProcessor_.addCamera(R1, t1, 0, img1);
+  pclProcessor_.addCamera(R2, t2, 1, img2);
+  std::vector<cv::Point3f> points3D =
+      robustTriangulate(points1, points2, K, R1, t1, R2, t2, 10000);
+  // points3D = sfmFrontend.scaleToVisibleRange(points3D);
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
+      convertToPointCloud(points3D, points1, img1);
+  std::cout << "cloud size: " << cloud->size() << std::endl;
+  pclProcessor_.addPointCloud(*cloud, "test");
+}
+void SFMFrontend::twoViewEuclideanReconstruction(
+    cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR, const cv::Mat &Inputt,
+    cv::Mat &OutputR, cv::Mat &Outputt, FeatureDetectorType detector_type) {
+  img1 = preprocessor_.preprocess(img1);
+  img2 = preprocessor_.preprocess(img2);
+  std::vector<cv::Point2f> points1, points2;
+  GetGoodMatches(img1, img2, points1, points2, detector_type);
+  cv::Mat F = ComputeFundamentalMatrix(points1, points2);
+  cv::Mat E;
+  cv::recoverPose(points1, points2, K, D, K, D, E, OutputR, Outputt);
+  pclProcessor_.addCamera(InputR, Inputt, 0, img1);
+  pclProcessor_.addCamera(OutputR, Outputt, 1, img2);
+  std::vector<cv::Point3f> points3D = robustTriangulate(
+      points1, points2, K, InputR, Inputt, OutputR, Outputt, 10000);
+  // points3D = sfmFrontend.scaleToVisibleRange(points3D);
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
+      convertToPointCloud(points3D, points1, img1);
+  pclProcessor_.addPointCloud(*cloud, std::to_string(time(nullptr)));
+}
+void SFMFrontend::show() {
+  while (!pclProcessor_.getViewer()->wasStopped()) {
+    pclProcessor_.getViewer()->spinOnce(100);
+    cv::waitKey(1);
+  }
+}
+// 两视图欧式结构恢复与构建稀疏点云
 } // namespace pre

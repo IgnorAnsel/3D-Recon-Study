@@ -18,7 +18,8 @@ int main() {
   img1 = preprocessor.preprocess(img1);
   img2 = preprocessor.preprocess(img2);
   std::vector<cv::Point2f> points1, points2;
-  sfmFrontend.GetGoodMatches(img1, img2, points1, points2);
+  sfmFrontend.GetGoodMatches(img1, img2, points1, points2,
+                             pre::FeatureDetectorType::SIFT);
   cv::Mat F = sfmFrontend.ComputeFundamentalMatrix(points1, points2);
   // sfmFrontend.TestFundamentalMatrix(points1, points2, F, img1, img2);
   cv::Mat K = preprocessor.getIntrinsicMatrix();
@@ -27,7 +28,8 @@ int main() {
   cv::Mat E;
   cv::Mat R2, t2;
   cv::recoverPose(points1, points2, K, D, K, D, E, R2, t2);
-  // sfmFrontend.TestEssentialMatrix(points1, points2, E, K, K, img1, img2);
+  // sfmFrontend.find_transform(K, poinst);
+  //  sfmFrontend.TestEssentialMatrix(points1, points2, E, K, K, img1, img2);
 
   // sfmFrontend.ComputePoseFromEssentialMatrix(E, points1, points2, K, R2, t2);
   pclProcessor.initPCLWithNoCloud();
@@ -41,7 +43,7 @@ int main() {
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
       sfmFrontend.convertToPointCloud(points3D, points1, img1);
   std::cout << "cloud size: " << cloud->size() << std::endl;
-  pclProcessor.setGlobalCloud(cloud);
+  // pclProcessor.setGlobalCloud(cloud);
   pclProcessor.addPointCloud(*cloud, "test");
 
   while (!pclProcessor.getViewer()->wasStopped()) {
