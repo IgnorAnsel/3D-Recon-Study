@@ -12,6 +12,7 @@ struct CameraInfo {
   cv::Mat t;             // 平移向量
   cv::Mat K;             // 相机内参(可选)
   int frameId;           // 对应的帧ID
+  cv::Mat img;           // 对应的图像(可选)
   std::string imagePath; // 对应的图像路径(可选)
 };
 
@@ -36,6 +37,8 @@ public:
   bool addCamera(
       const cv::Mat &R, const cv::Mat &t, int frameId,
       const std::string &imagePath = ""); // 添加相机(主要用于SFM运动结构恢复)
+  bool addCamera(const cv::Mat &R, const cv::Mat &t, int frameId,
+                 const cv::Mat &image);
   void
   visualizeCameraInPointCloud(const CameraInfo &camera); // 在点云中可视化相机
   void setGlobalCloud(

@@ -1,8 +1,16 @@
 #include "preprocessing/SFMFrontend.h"
 #include "preprocessing/console.h"
 #include <opencv2/core.hpp>
+#include <opencv2/core/types.hpp>
 namespace pre {
 SFMFrontend::SFMFrontend() {}
+SFMFrontend::SFMFrontend(const std::string &cameraParamsPath) {
+  preprocessor_.loadCameraParams(cameraParamsPath);
+  pclProcessor_.initPCLWithNoCloud();
+  K = preprocessor_.getIntrinsicMatrix();
+  D = preprocessor_.getDistortionCoefficients();
+}
+
 SFMFrontend::SFMFrontend(FeatureDetectorType detector_type) {}
 SFMFrontend::~SFMFrontend() {}
 void SFMFrontend::createSIFT(int nfeatures, int nOctaveLayers,
@@ -456,21 +464,10 @@ void SFMFrontend::ComputePoseFromEssentialMatrix(
   std::cout << Console::INFO << "  • 内点数量: " << inliers << "/"
             << points1.size() << std::endl;
   std::cout << Console::INFO << "  • 旋转矩阵 R:" << std::endl;
-  for (int i = 0; i < 3; i++) {
-    std::cout << Console::INFO << "    [";
-    for (int j = 0; j < 3; j++) {
-      std::cout << std::setw(10) << std::fixed << std::setprecision(6)
-                << R.at<double>(i, j);
-      if (j < 2)
-        std::cout << ", ";
-    }
-    std::cout << "]" << std::endl;
-  }
+  std::cout << Console::INFO << R << std::endl;
 
   std::cout << Console::INFO << "  • 平移向量 t:" << std::endl;
-  std::cout << Console::INFO << "    [" << std::setw(10) << t.at<double>(0)
-            << ", " << std::setw(10) << t.at<double>(1) << ", " << std::setw(10)
-            << t.at<double>(2) << "]" << std::endl;
+  std::cout << Console::INFO << t << std::endl;
 
   return;
 }
@@ -500,50 +497,85 @@ SFMFrontend::robustTriangulate(const std::vector<cv::Point2f> &points1,
   // 将点转换为3D点并进行重投影测试
   std::vector<cv::Point3f> points3D;
   std::vector<bool> inliers(points1.size(), false);
+  cv::convertPointsFromHomogeneous(points4D.t(), points3D);
 
-  for (int i = 0; i < points4D.cols; ++i) {
-    // 转换为三维点
-    cv::Mat X = points4D.col(i);
-    X /= X.at<double>(3, 0);
+  // for (int i = 0; i < points4D.cols; ++i) {
+  //   // 转换为三维点
+  //   cv::Mat X = points4D.col(i);
+  //   X /= X.at<double>(3, 0);
 
-    cv::Point3f point3D(static_cast<float>(X.at<double>(0, 0)),
-                        static_cast<float>(X.at<double>(1, 0)),
-                        static_cast<float>(X.at<double>(2, 0)));
-    // std::cout << "point3D: " << point3D << std::endl;
-    // 重投影测试
-    cv::Mat X3D =
-        (cv::Mat_<double>(4, 1) << point3D.x, point3D.y, point3D.z, 1);
+  //   cv::Point3f point3D(static_cast<float>(X.at<double>(0, 0)),
+  //                       static_cast<float>(X.at<double>(1, 0)),
+  //                       static_cast<float>(X.at<double>(2, 0)));
+  //   // std::cout << "point3D: " << point3D << std::endl;
+  //   // 重投影测试
+  //   cv::Mat X3D =
+  //       (cv::Mat_<double>(4, 1) << point3D.x, point3D.y, point3D.z, 1);
 
-    // 重投影到相机1
-    // 确保两个矩阵具有相同的数据类型
-    cv::Mat X3D_converted;
-    X3D.convertTo(X3D_converted, P1.type());
+  //   // 重投影到相机1
+  //   // 确保两个矩阵具有相同的数据类型
+  //   cv::Mat X3D_converted;
+  //   X3D.convertTo(X3D_converted, P1.type());
 
-    // 执行乘法
-    cv::Mat x1 = P1 * X3D_converted;
-    cv::Point2f reprojPoint1(x1.at<double>(0) / x1.at<double>(2),
-                             x1.at<double>(1) / x1.at<double>(2));
-    float error1 = cv::norm(reprojPoint1 - points1[i]);
+  //   cv::Mat x1 = P1 * X3D_converted;
+  //   cv::Point2f reprojPoint1(x1.at<double>(0) / x1.at<double>(2),
+  //                            x1.at<double>(1) / x1.at<double>(2));
+  //   float error1 = cv::norm(reprojPoint1 - points1[i]);
 
-    // 重投影到相机2
-    cv::Mat x2 = P2 * X3D_converted;
-    cv::Point2f reprojPoint2(x2.at<double>(0) / x2.at<double>(2),
-                             x2.at<double>(1) / x2.at<double>(2));
-    float error2 = cv::norm(reprojPoint2 - points2[i]);
-    // std::cout << "error1: " << error1 << ", error2: " << error2 << std::endl;
-    //  检查重投影误差
-    if (error1 < reprojectionThreshold && error2 < reprojectionThreshold) {
+  //   // 重投影到相机2
+  //   cv::Mat x2 = P2 * X3D_converted;
+  //   cv::Point2f reprojPoint2(x2.at<double>(0) / x2.at<double>(2),
+  //                            x2.at<double>(1) / x2.at<double>(2));
+  //   float error2 = cv::norm(reprojPoint2 - points2[i]);
+  //   // std::cout << "error1: " << error1 << ", error2: " << error2 <<
+  //   std::endl;
+  //   //  检查重投影误差
+  //   if (error1 < reprojectionThreshold && error2 < reprojectionThreshold) {
 
-      inliers[i] = true;
-      points3D.push_back(point3D);
-    }
-  }
+  //     inliers[i] = true;
+  //     points3D.push_back(point3D);
+  //   }
+  // }
 
   std::cout << "Triangulation inliers: "
             << std::count(inliers.begin(), inliers.end(), true) << "/"
             << points1.size() << std::endl;
 
   return points3D;
+}
+bool SFMFrontend::find_transform(cv::Mat &K, std::vector<cv::KeyPoint> &p1,
+                                 std::vector<cv::KeyPoint> &p2, cv::Mat &R,
+                                 cv::Mat &T, cv::Mat &mask) {
+  //根据内参矩阵获取相机的焦距和光心坐标（主点坐标）
+  double focal_length = 0.5 * (K.at<double>(0) + K.at<double>(4));
+  cv::Point2d principle_point(K.at<double>(2), K.at<double>(5));
+
+  std::vector<cv::Point2f> _p1, _p2;
+  for (int i = 0; i < p1.size(); i++) {
+    _p1.push_back(p1[i].pt);
+    _p2.push_back(p2[i].pt);
+  }
+
+  //根据匹配点求取本征矩阵，使用RANSAC，进一步排除失配点
+  cv::Mat E = cv::findEssentialMat(_p1, _p2, focal_length, principle_point,
+                                   cv::RANSAC, 0.999, 1.0, mask);
+  if (E.empty())
+    return false;
+
+  double feasible_count = cv::countNonZero(mask);
+  std::cout << (int)feasible_count << " -in- " << p1.size() << std::endl;
+  //对于RANSAC而言，outlier数量大于50%时，结果是不可靠的
+  if (feasible_count <= 15 || (feasible_count / p1.size()) < 0.6)
+    return false;
+
+  //分解本征矩阵，获取相对变换
+  int pass_count =
+      cv::recoverPose(E, _p1, _p2, R, T, focal_length, principle_point, mask);
+
+  //同时位于两个相机前方的点的数量要足够大
+  if (((double)pass_count) / feasible_count < 0.7)
+    return false;
+  return true;
 }
 pcl::PointCloud<pcl::PointXYZRGB>::Ptr
 SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
@@ -641,5 +673,83 @@ SFMFrontend::scaleToVisibleRange(std::vector<cv::Point3f> &points3D) {
 
   return points3D;
 }
+std::vector<cv::Point3f>
+SFMFrontend::homogeneous2euclidean(const cv::Mat &points4D) {
+  // CV_Assert(points4D.rows == 4);  // 确保是4行N列的齐次坐标
+  // CV_Assert(points4D.type() == CV_32F || points4D.type() == CV_64F); //
+  // 支持浮点或双精度
 
+  const int num_points = points4D.cols; // 点的数量
+  std::vector<cv::Point3f> points3D;
+  points3D.reserve(num_points);
+
+  for (int i = 0; i < num_points; ++i) {
+    // 获取第i个点的齐次坐标 (x, y, z, w)
+    const double *p4 = points4D.ptr<double>(0) + 4 * i; // 假设双精度输入
+    const double w = p4[3];                             // 第4个分量是w
+
+    if (std::abs(w) < 1e-9) {
+      points3D.emplace_back(0, 0, 0); // 无效点设为原点（或抛出异常）
+      continue;
+    }
+
+    const double inv_w = 1.0 / w;
+    const double x = p4[0] * inv_w;
+    const double y = p4[1] * inv_w;
+    const double z = p4[2] * inv_w;
+
+    points3D.emplace_back(static_cast<float>(x), static_cast<float>(y),
+                          static_cast<float>(z));
+  }
+
+  return points3D;
+}
+void SFMFrontend::twoViewEuclideanReconstruction(
+    cv::Mat &img1, cv::Mat &img2, FeatureDetectorType detector_type) {
+  img1 = preprocessor_.preprocess(img1);
+  img2 = preprocessor_.preprocess(img2);
+  std::vector<cv::Point2f> points1, points2;
+  GetGoodMatches(img1, img2, points1, points2, detector_type);
+  cv::Mat F = ComputeFundamentalMatrix(points1, points2);
+  cv::Mat E;
+  cv::Mat R2, t2;
+  cv::recoverPose(points1, points2, K, D, K, D, E, R2, t2);
+  cv::Mat R1 = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
+  cv::Mat t1 = (cv::Mat_<double>(3, 1) << 0, 0, 0);
+  pclProcessor_.addCamera(R1, t1, 0, img1);
+  pclProcessor_.addCamera(R2, t2, 1, img2);
+  std::vector<cv::Point3f> points3D =
+      robustTriangulate(points1, points2, K, R1, t1, R2, t2, 0.1);
+  // points3D = sfmFrontend.scaleToVisibleRange(points3D);
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
+      convertToPointCloud(points3D, points1, img1);
+  std::cout << "cloud size: " << cloud->size() << std::endl;
+  pclProcessor_.addPointCloud(*cloud, std::to_string(time(nullptr)));
+}
+void SFMFrontend::twoViewEuclideanReconstruction(
+    cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR, const cv::Mat &Inputt,
+    cv::Mat &OutputR, cv::Mat &Outputt, FeatureDetectorType detector_type) {
+  img1 = preprocessor_.preprocess(img1);
+  img2 = preprocessor_.preprocess(img2);
+  std::vector<cv::Point2f> points1, points2;
+  GetGoodMatches(img1, img2, points1, points2, detector_type);
+  cv::Mat F = ComputeFundamentalMatrix(points1, points2);
+  cv::Mat E;
+  cv::recoverPose(points1, points2, K, D, K, D, E, OutputR, Outputt);
+  pclProcessor_.addCamera(InputR, Inputt, 0, img1);
+  pclProcessor_.addCamera(OutputR, Outputt, 1, img2);
+  std::vector<cv::Point3f> points3D = robustTriangulate(
+      points1, points2, K, InputR, Inputt, OutputR, Outputt, 10000);
+  // points3D = sfmFrontend.scaleToVisibleRange(points3D);
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
+      convertToPointCloud(points3D, points1, img1);
+  pclProcessor_.addPointCloud(*cloud, std::to_string(time(nullptr)));
+}
+void SFMFrontend::show() {
+  while (!pclProcessor_.getViewer()->wasStopped()) {
+    pclProcessor_.getViewer()->spinOnce(100);
+    cv::waitKey(1);
+  }
+}
+// 两视图欧式结构恢复与构建稀疏点云
 } // namespace pre

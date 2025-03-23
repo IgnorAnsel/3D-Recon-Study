@@ -12,6 +12,9 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <utility>
 #include <vector>
+
+#include "preprocessing/pclprocessing.h"
+#include "preprocessing/pre.h"
 namespace pre {
 enum FeatureDetectorType {
   SIFT,
@@ -29,6 +32,7 @@ enum FeatureDetectorType {
 class SFMFrontend {
 public:
   SFMFrontend();
+  SFMFrontend(const std::string &cameraParamsPath);
   SFMFrontend(FeatureDetectorType detector_type);
   void createSIFT(int nfeatures = 0, int nOctaveLayers = 3,
                   double contrastThreshold = 0.040000000000000001,
@@ -90,15 +94,32 @@ public:
                     const cv::Mat &R1, const cv::Mat &t1, const cv::Mat &R2,
                     const cv::Mat &t2,
                     float reprojectionThreshold = 5.0); // 稳健三角化
+  bool find_transform(cv::Mat &K, std::vector<cv::KeyPoint> &p1,
+                      std::vector<cv::KeyPoint> &p2, cv::Mat &R, cv::Mat &T,
+                      cv::Mat &mask);
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr convertToPointCloud(
       const std::vector<cv::Point3f> &points3D,
       const std::vector<cv::Point2f> &imagePoints = std::vector<cv::Point2f>(),
       const cv::Mat &image = cv::Mat());
   std::vector<cv::Point3f>
   scaleToVisibleRange(std::vector<cv::Point3f> &points3D);
+  std::vector<cv::Point3f> homogeneous2euclidean(const cv::Mat &points4D);
+  void twoViewEuclideanReconstruction(
+      cv::Mat &img1, cv::Mat &img2,
+      FeatureDetectorType detector_type =
+          FeatureDetectorType::SIFT); // 双视图欧式结构恢复和构建稀疏点云
+  void twoViewEuclideanReconstruction(
+      cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR,
+      const cv::Mat &Inputt, cv::Mat &OutputR, cv::Mat &Outputt,
+      FeatureDetectorType detector_type = FeatureDetectorType::SIFT);
+  void show();
   ~SFMFrontend();
 
 private:
+  pre::CameraPreprocessor preprocessor_; // 相机预处理
+  pre::PCLProcessing pclProcessor_;      // 点云处理
+  cv::Mat K;                             // 相机内参
+  cv::Mat D;                             // 相机畸变参数
   cv::Ptr<cv::SIFT> sift_;
   cv::Ptr<cv::ORB> orb_;
 };
