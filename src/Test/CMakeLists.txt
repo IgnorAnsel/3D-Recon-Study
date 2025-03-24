@@ -5,6 +5,7 @@ add_executable(Test_pclprocessing Test_pclprocessing.cpp)
 add_executable(Test_2OSSFM Test_2OSSFM.cpp)
 add_executable(Test_SFMFrontend Test_SFMFrontend.cpp)
 add_executable(Test_SFMFrontend2 Test_SFMFrontend2.cpp)
+add_executable(Test_SFMFrontend3 Test_SFMFrontend3.cpp)
 target_link_libraries(Test_pre PRIVATE
         PRIVATE
         Preprocessing
@@ -26,6 +27,11 @@ target_link_libraries(Test_SFMFrontend PRIVATE
         ${PCL_LIBRARIES}
 )
 target_link_libraries(Test_SFMFrontend2 PRIVATE
+        Preprocessing
+        ${OpenCV_LIBS}
+        ${PCL_LIBRARIES}
+)
+target_link_libraries(Test_SFMFrontend3 PRIVATE
         Preprocessing
         ${OpenCV_LIBS}
         ${PCL_LIBRARIES}

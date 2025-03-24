@@ -29,6 +29,23 @@ enum FeatureDetectorType {
   STAR,
   SIFT_CUDA
 };
+struct Image {
+  cv::Mat image;                       // 图像
+  std::vector<cv::KeyPoint> keypoints; // 关键点(未优化)
+  cv::Mat descriptors;                 // 关键点描述子
+  std::vector<cv::Point2f> points;     // 关键点(优化)
+};
+struct ImageNode {
+  int image_id;                        // 图像唯一标识
+  std::vector<cv::KeyPoint> keypoints; // 关键点
+  cv::Mat descriptors;                 // 描述子
+  std::vector<int> track_ids;          // 每个特征点关联的轨迹ID
+};
+struct Track {
+  int track_id;                                  // 轨迹唯一ID
+  cv::Point3f point3d;                           // 3D坐标
+  std::vector<std::pair<int, int>> observations; // (image_id, keypoint_idx)
+};
 class SFMFrontend {
 public:
   SFMFrontend();
@@ -122,6 +139,10 @@ private:
   cv::Mat D;                             // 相机畸变参数
   cv::Ptr<cv::SIFT> sift_;
   cv::Ptr<cv::ORB> orb_;
+  std::map<int, ImageNode> image_graph_;   // 图像图（key为image_id）
+  std::map<int, Track> tracks_;            // 轨迹数据库
+  std::vector<std::pair<int, int>> edges_; // 图像间的边（连接关系）
+  int next_track_id_ = 0;                  // 轨迹ID自增计数器
 };
 } // namespace pre
 
