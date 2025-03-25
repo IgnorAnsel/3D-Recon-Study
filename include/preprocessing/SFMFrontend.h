@@ -148,6 +148,9 @@ public:
                           int startImageId = 0);
   void populateEdges(int min_matches_threshold = 30); // 建立图像图中的边
   void printGraphAsMatrix();                          // 打印图像图
+  void deleteEdges(int i, int j); // 删除图像图中的边
+  void getEdges(int &i, int &j,
+                const bool &isDeleteEdge = true); // 获取图像图中的边
   ~SFMFrontend();
 
 private:

@@ -7,5 +7,10 @@ int main(int argc, char **argv) {
   sfmFrontend.processImageGraph();
   sfmFrontend.populateEdges(100);
   sfmFrontend.printGraphAsMatrix();
+
+  int i = 0, j = 0;
+  sfmFrontend.getEdges(i, j);
+  sfmFrontend.getEdges(i, j);
+  sfmFrontend.printGraphAsMatrix();
   return 0;
 }

@@ -1072,4 +1072,24 @@ void SFMFrontend::printGraphAsMatrix() {
     std::cout << "\n";
   }
 }
+void SFMFrontend::deleteEdges(int i, int j) {
+  edges_.erase(std::remove_if(edges_.begin(), edges_.end(),
+                              [i, j](const auto &edge) {
+                                return (edge.first == i && edge.second == j) ||
+                                       (edge.first == j && edge.second == i);
+                              }),
+               edges_.end());
+}
+void SFMFrontend::getEdges(int &i, int &j, const bool &isDeleteEdge) {
+  if (edges_.empty()) {
+    std::cout << Console::WARNING << "No edges available.\n";
+    return;
+  }
+  std::pair<int, int> edge = edges_.back();
+  i = edge.first;
+  j = edge.second;
+  std::cout << Console::INFO << "Selected edge: (" << i << ", " << j << ")\n";
+  if (isDeleteEdge)
+    deleteEdges(i, j); // 删除边
+}
 } // namespace pre
