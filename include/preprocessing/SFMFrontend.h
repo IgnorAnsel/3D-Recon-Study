@@ -36,10 +36,12 @@ struct Image {
   std::vector<cv::Point2f> points;     // 关键点(优化)
 };
 struct ImageNode {
+  cv::Mat image;                       // 图像
   int image_id;                        // 图像唯一标识
   std::vector<cv::KeyPoint> keypoints; // 关键点
+  std::vector<cv::KeyPoint> points;    // 关键点(优化)
+  cv::Mat points_descriptors;          // 关键点描述子
   cv::Mat descriptors;                 // 描述子
-  std::vector<int> track_ids;          // 每个特征点关联的轨迹ID
 };
 struct Track {
   int track_id;                                  // 轨迹唯一ID
@@ -51,6 +53,8 @@ public:
   SFMFrontend();
   SFMFrontend(const std::string &cameraParamsPath);
   SFMFrontend(FeatureDetectorType detector_type);
+  bool haveImage(const std::string &imagePath, cv::Mat &image);
+
   void createSIFT(int nfeatures = 0, int nOctaveLayers = 3,
                   double contrastThreshold = 0.040000000000000001,
                   double edgeThreshold = 10, double sigma = 1.6000000000000001,
@@ -130,6 +134,20 @@ public:
       const cv::Mat &Inputt, cv::Mat &OutputR, cv::Mat &Outputt,
       FeatureDetectorType detector_type = FeatureDetectorType::SIFT);
   void show();
+
+  void processImageNodes(std::vector<ImageNode> &all_nodes,
+                         float ratio_threshold = 0.8f, int min_match_count = 2);
+  void processImageGraph(std::map<int, ImageNode> &image_graph,
+                         float ratio_threshold = 0.8f, int min_match_count = 2);
+  std::map<int, ImageNode> getImageGraph(); // 获取图像图
+  void processImageGraph(float ratio_threshold = 0.8f, int min_match_count = 2);
+  void populateImageGraph(std::map<int, ImageNode> &imageGraph,
+                          const std::string &filePathBegin,
+                          int startImageId = 0);
+  void populateImageGraph(const std::string &filePathBegin,
+                          int startImageId = 0);
+  void populateEdges(int min_matches_threshold = 30); // 建立图像图中的边
+  void printGraphAsMatrix();                          // 打印图像图
   ~SFMFrontend();
 
 private:
@@ -140,7 +158,6 @@ private:
   cv::Ptr<cv::SIFT> sift_;
   cv::Ptr<cv::ORB> orb_;
   std::map<int, ImageNode> image_graph_;   // 图像图（key为image_id）
-  std::map<int, Track> tracks_;            // 轨迹数据库
   std::vector<std::pair<int, int>> edges_; // 图像间的边（连接关系）
   int next_track_id_ = 0;                  // 轨迹ID自增计数器
 };

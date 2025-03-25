@@ -10,9 +10,17 @@ SFMFrontend::SFMFrontend(const std::string &cameraParamsPath) {
   K = preprocessor_.getIntrinsicMatrix();
   D = preprocessor_.getDistortionCoefficients();
 }
-
 SFMFrontend::SFMFrontend(FeatureDetectorType detector_type) {}
 SFMFrontend::~SFMFrontend() {}
+bool SFMFrontend::haveImage(const std::string &imagePath, cv::Mat &image) {
+  if (!cv::imread(imagePath).empty()) {
+    image = cv::imread(imagePath);
+    return true;
+  }
+  image = cv::Mat();
+  return false;
+}
+
 void SFMFrontend::createSIFT(int nfeatures, int nOctaveLayers,
                              double contrastThreshold, double edgeThreshold,
                              double sigma, bool enable_precise_upscale) {
@@ -751,5 +759,317 @@ void SFMFrontend::show() {
     cv::waitKey(1);
   }
 }
-// 两视图欧式结构恢复与构建稀疏点云
+
+void SFMFrontend::processImageNodes(std::vector<ImageNode> &all_nodes,
+                                    float ratio_threshold,
+                                    int min_match_count) {
+  for (size_t base_idx = 0; base_idx < all_nodes.size(); ++base_idx) {
+    ImageNode &base_node = all_nodes[base_idx];
+    if (base_node.descriptors.empty())
+      continue;
+
+    std::vector<int> match_counts(base_node.keypoints.size(), 0);
+
+    for (size_t target_idx = 0; target_idx < all_nodes.size(); ++target_idx) {
+      if (target_idx == base_idx)
+        continue;
+      ImageNode &target_node = all_nodes[target_idx];
+      if (target_node.descriptors.empty())
+        continue;
+
+      // 使用FLANN匹配器（适合SIFT/SURF）
+      cv::Ptr<cv::DescriptorMatcher> matcher =
+          cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
+      std::vector<std::vector<cv::DMatch>> knn_matches;
+      matcher->knnMatch(base_node.descriptors, target_node.descriptors,
+                        knn_matches, 2);
+
+      // 应用比率测试
+      std::vector<cv::DMatch> good_matches;
+      for (size_t i = 0; i < knn_matches.size(); ++i) {
+        if (knn_matches[i].size() < 2)
+          continue;
+        if (knn_matches[i][0].distance <
+            ratio_threshold * knn_matches[i][1].distance) {
+          good_matches.push_back(knn_matches[i][0]);
+        }
+      }
+
+      // 更新匹配次数
+      for (const auto &match : good_matches) {
+        int query_idx = match.queryIdx;
+        if (query_idx >= 0 &&
+            query_idx < static_cast<int>(match_counts.size())) {
+          match_counts[query_idx]++;
+        }
+      }
+    }
+
+    // 保留匹配次数足够的特征点
+    base_node.points.clear();
+    for (size_t i = 0; i < match_counts.size(); ++i) {
+      if (match_counts[i] >= min_match_count) {
+        base_node.points.push_back(base_node.keypoints[i]);
+        base_node.points_descriptors.push_back(base_node.descriptors.row(i));
+      }
+    }
+  }
+}
+void SFMFrontend::processImageGraph(std::map<int, ImageNode> &image_graph,
+                                    float ratio_threshold,
+                                    int min_match_count) {
+  // 遍历所有基底节点 (base_node)
+  for (auto &base_pair : image_graph) {
+    ImageNode &base_node = base_pair.second;
+    if (base_node.descriptors.empty())
+      continue;
+
+    // 初始化匹配次数计数器：索引对应 base_node.keypoints 的索引
+    std::vector<int> match_counts(base_node.keypoints.size(), 0);
+
+    // 遍历所有目标节点 (target_node)
+    for (auto &target_pair : image_graph) {
+      ImageNode &target_node = target_pair.second;
+
+      // 跳过自身匹配
+      if (target_node.image_id == base_node.image_id)
+        continue;
+      if (target_node.descriptors.empty())
+        continue;
+
+      // 使用 FLANN 匹配器进行特征匹配
+      cv::Ptr<cv::DescriptorMatcher> matcher =
+          cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
+      std::vector<std::vector<cv::DMatch>> knn_matches;
+      matcher->knnMatch(base_node.descriptors, target_node.descriptors,
+                        knn_matches, 2);
+
+      // 应用比率测试筛选优质匹配
+      std::vector<cv::DMatch> good_matches;
+      for (size_t i = 0; i < knn_matches.size(); ++i) {
+        if (knn_matches[i].size() < 2)
+          continue;
+        if (knn_matches[i][0].distance <
+            ratio_threshold * knn_matches[i][1].distance) {
+          good_matches.push_back(knn_matches[i][0]);
+        }
+      }
+
+      // 统计基底节点特征点的匹配次数
+      for (const auto &match : good_matches) {
+        int query_idx = match.queryIdx;
+        if (query_idx >= 0 &&
+            query_idx < static_cast<int>(match_counts.size())) {
+          match_counts[query_idx]++;
+        }
+      }
+    }
+
+    // 保留匹配次数达到阈值的特征点到 points 中
+    base_node.points.clear();
+    for (size_t i = 0; i < match_counts.size(); ++i) {
+      if (match_counts[i] >= min_match_count) {
+        base_node.points.push_back(base_node.keypoints[i]);
+        base_node.points_descriptors.push_back(base_node.descriptors.row(i));
+      }
+    }
+  }
+}
+void SFMFrontend::processImageGraph(float ratio_threshold,
+                                    int min_match_count) {
+  // 遍历所有基底节点 (base_node)
+  for (auto &base_pair : image_graph_) {
+    std::cout << Console::INFO
+              << "Processing base node id: " << base_pair.second.image_id
+              << " || before: " << base_pair.second.keypoints.size()
+              << std::endl;
+    ImageNode &base_node = base_pair.second;
+    if (base_node.descriptors.empty())
+      continue;
+
+    // 初始化匹配次数计数器：索引对应 base_node.keypoints 的索引
+    std::vector<int> match_counts(base_node.keypoints.size(), 0);
+
+    // 遍历所有目标节点 (target_node)
+    for (auto &target_pair : image_graph_) {
+      ImageNode &target_node = target_pair.second;
+
+      // 跳过自身匹配
+      if (target_node.image_id == base_node.image_id)
+        continue;
+      if (target_node.descriptors.empty())
+        continue;
+
+      // 使用 FLANN 匹配器进行特征匹配
+      cv::Ptr<cv::DescriptorMatcher> matcher =
+          cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
+      std::vector<std::vector<cv::DMatch>> knn_matches;
+      matcher->knnMatch(base_node.descriptors, target_node.descriptors,
+                        knn_matches, 2);
+
+      // 应用比率测试筛选优质匹配
+      std::vector<cv::DMatch> good_matches;
+      for (size_t i = 0; i < knn_matches.size(); ++i) {
+        if (knn_matches[i].size() < 2)
+          continue;
+        if (knn_matches[i][0].distance <
+            ratio_threshold * knn_matches[i][1].distance) {
+          good_matches.push_back(knn_matches[i][0]);
+        }
+      }
+
+      // 统计基底节点特征点的匹配次数
+      for (const auto &match : good_matches) {
+        int query_idx = match.queryIdx;
+        if (query_idx >= 0 &&
+            query_idx < static_cast<int>(match_counts.size())) {
+          match_counts[query_idx]++;
+        }
+      }
+    }
+
+    // 保留匹配次数达到阈值的特征点到 points 中
+    base_node.points.clear();
+    for (size_t i = 0; i < match_counts.size(); ++i) {
+      if (match_counts[i] >= min_match_count) {
+        base_node.points.push_back(base_node.keypoints[i]);
+        base_node.points_descriptors.push_back(base_node.descriptors.row(i));
+      }
+    }
+    std::cout << Console::INFO << "Later: " << base_node.points.size()
+              << std::endl;
+  }
+}
+std::map<int, ImageNode> SFMFrontend::getImageGraph() { return image_graph_; }
+void SFMFrontend::populateImageGraph(std::map<int, ImageNode> &imageGraph,
+                                     const std::string &filePathBegin,
+                                     int startImageId) {
+  cv::Mat image;
+  std::vector<cv::KeyPoint> keypoints;
+  cv::Mat descriptors;
+  for (int image_id = startImageId;; image_id++) {
+    std::string imagePath = filePathBegin + std::to_string(image_id) + ".jpg";
+    if (!haveImage(imagePath, image)) {
+      break;
+    }
+    image = preprocessor_.preprocess(image);
+    detectFeatures(image, keypoints, descriptors, FeatureDetectorType::SIFT);
+    ImageNode node;
+    node.image = image;
+    node.image_id = image_id;
+    node.keypoints = keypoints;
+    node.descriptors = descriptors;
+    imageGraph.insert({image_id, node});
+  }
+}
+void SFMFrontend::populateImageGraph(const std::string &filePathBegin,
+                                     int startImageId) {
+  cv::Mat image;
+  createSIFT();
+  std::vector<cv::KeyPoint> keypoints;
+  cv::Mat descriptors;
+  for (int image_id = startImageId;; image_id++) {
+    std::string imagePath = filePathBegin + std::to_string(image_id) + ".jpg";
+    if (!haveImage(imagePath, image)) {
+      break;
+    }
+    image = preprocessor_.preprocess(image);
+    detectFeatures(image, keypoints, descriptors, FeatureDetectorType::SIFT);
+    ImageNode node;
+    node.image = image;
+    node.image_id = image_id;
+    node.keypoints = keypoints;
+    node.descriptors = descriptors;
+    image_graph_.insert({image_id, node});
+  }
+}
+void SFMFrontend::populateEdges(int min_matches_threshold) {
+  edges_.clear();
+  std::vector<int> image_ids;
+
+  // 收集所有图像ID
+  for (const auto &pair : image_graph_) {
+    image_ids.push_back(pair.first);
+  }
+
+  // 遍历所有图像对 (i < j 避免重复)
+  for (size_t i = 0; i < image_ids.size(); ++i) {
+    int id_i = image_ids[i];
+    ImageNode &node_i = image_graph_[id_i];
+    if (node_i.points_descriptors.empty())
+      continue; // 跳过无优化描述子的节点
+
+    for (size_t j = i + 1; j < image_ids.size(); ++j) {
+      int id_j = image_ids[j];
+      ImageNode &node_j = image_graph_[id_j];
+      if (node_j.points_descriptors.empty())
+        continue;
+
+      // 使用knnMatch + 比率测试
+      cv::Ptr<cv::DescriptorMatcher> matcher =
+          cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
+      std::vector<std::vector<cv::DMatch>> knn_matches;
+      matcher->knnMatch(node_i.points_descriptors, node_j.points_descriptors,
+                        knn_matches, 2);
+
+      // 筛选优质匹配
+      std::vector<cv::DMatch> good_matches;
+      for (const auto &match_pair : knn_matches) {
+        if (match_pair.size() < 2)
+          continue;
+        if (match_pair[0].distance < 0.8 * match_pair[1].distance) {
+          good_matches.push_back(match_pair[0]);
+        }
+      }
+
+      // 若匹配数超过阈值，建立边
+      if (good_matches.size() >= min_matches_threshold) {
+        edges_.emplace_back(id_i, id_j);
+      }
+    }
+  }
+}
+void SFMFrontend::printGraphAsMatrix() {
+  if (image_graph_.empty()) {
+    std::cout << "图像图为空." << std::endl;
+    return;
+  }
+  // 1. 收集所有图像ID并排序
+  std::vector<int> image_ids;
+  for (const auto &pair : image_graph_) {
+    image_ids.push_back(pair.first);
+  }
+  std::sort(image_ids.begin(), image_ids.end());
+  // 2. 创建ID到矩阵索引的映射
+  std::map<int, int> id_to_index;
+  for (size_t i = 0; i < image_ids.size(); ++i) {
+    id_to_index[image_ids[i]] = i;
+  }
+  // 3. 初始化邻接矩阵（全0）
+  int n = image_ids.size();
+  std::vector<std::vector<int>> matrix(n, std::vector<int>(n, 0));
+  // 4. 填充邻接矩阵
+  for (const auto &edge : edges_) {
+    int i = id_to_index[edge.first];
+    int j = id_to_index[edge.second];
+    matrix[i][j] = 1;
+    matrix[j][i] = 1; // 无向图对称
+  }
+  // 5. 打印矩阵
+  std::cout << "邻接矩阵 (1表示存在边):\n";
+  // 打印列标题（图像ID）
+  std::cout << "     "; // 对齐空白
+  for (int id : image_ids) {
+    std::cout << std::setw(4) << id << " ";
+  }
+  std::cout << "\n";
+  // 打印矩阵行
+  for (int i = 0; i < n; ++i) {
+    std::cout << std::setw(4) << image_ids[i] << " "; // 行标题
+    for (int j = 0; j < n; ++j) {
+      std::cout << std::setw(4) << matrix[i][j] << " ";
+    }
+    std::cout << "\n";
+  }
+}
 } // namespace pre
