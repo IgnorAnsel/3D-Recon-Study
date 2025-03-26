@@ -2,6 +2,7 @@
 #include "preprocessing/console.h"
 #include <opencv2/core.hpp>
 #include <opencv2/core/types.hpp>
+#include <opencv2/highgui.hpp>
 namespace pre {
 SFMFrontend::SFMFrontend() {}
 SFMFrontend::SFMFrontend(const std::string &cameraParamsPath) {
@@ -504,7 +505,7 @@ SFMFrontend::robustTriangulate(const std::vector<cv::Point2f> &points1,
 
   // 将点转换为3D点并进行重投影测试
   std::vector<cv::Point3f> points3D;
-  std::vector<bool> inliers(points1.size(), false);
+  // std::vector<bool> inliers(points1.size(), false);
   cv::convertPointsFromHomogeneous(points4D.t(), points3D);
 
   // for (int i = 0; i < points4D.cols; ++i) {
@@ -545,9 +546,9 @@ SFMFrontend::robustTriangulate(const std::vector<cv::Point2f> &points1,
   //   }
   // }
 
-  std::cout << "Triangulation inliers: "
-            << std::count(inliers.begin(), inliers.end(), true) << "/"
-            << points1.size() << std::endl;
+  // std::cout << "Triangulation inliers: "
+  //           << std::count(inliers.begin(), inliers.end(), true) << "/"
+  //           << points1.size() << std::endl;
 
   return points3D;
 }
@@ -608,8 +609,9 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
     cloud->points[i].x = points3D[i].x;
     cloud->points[i].y = points3D[i].y;
     cloud->points[i].z = points3D[i].z;
-    std::cout << Console::INFO << cloud->points[i].x << ","
-              << cloud->points[i].y << "," << cloud->points[i].z << std::endl;
+    // std::cout << Console::INFO << cloud->points[i].x << ","
+    //           << cloud->points[i].y << "," << cloud->points[i].z <<
+    //           std::endl;
     // 添加颜色信息
     if (hasColor) {
       int x = static_cast<int>(std::round(imagePoints[i].x));
@@ -620,15 +622,15 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
         if (image.channels() == 3) {
           // BGR图像
           cv::Vec3b color = image.at<cv::Vec3b>(y, x);
-          cloud->points[i].b = color[0];
-          cloud->points[i].g = color[1];
-          cloud->points[i].r = color[2];
+          cloud->points[i].b = 255; // color[0];
+          cloud->points[i].g = 255; // color[1];
+          cloud->points[i].r = 255; // color[2];
         } else if (image.channels() == 1) {
           // 灰度图像
           uchar gray = image.at<uchar>(y, x);
-          cloud->points[i].r = gray;
-          cloud->points[i].g = gray;
-          cloud->points[i].b = gray;
+          cloud->points[i].r = 255; // gray;
+          cloud->points[i].g = 255; // gray;
+          cloud->points[i].b = 255; // gray;
         }
       } else {
         // 默认颜色：白色
@@ -712,10 +714,14 @@ SFMFrontend::homogeneous2euclidean(const cv::Mat &points4D) {
 
   return points3D;
 }
-void SFMFrontend::twoViewEuclideanReconstruction(
-    cv::Mat &img1, cv::Mat &img2, FeatureDetectorType detector_type) {
-  img1 = preprocessor_.preprocess(img1);
-  img2 = preprocessor_.preprocess(img2);
+std::vector<cv::Point3f>
+SFMFrontend::twoViewEuclideanReconstruction(cv::Mat &img1, cv::Mat &img2,
+                                            FeatureDetectorType detector_type,
+                                            bool isProcessed) {
+  if (!isProcessed) {
+    img1 = preprocessor_.preprocess(img1);
+    img2 = preprocessor_.preprocess(img2);
+  }
   std::vector<cv::Point2f> points1, points2;
   GetGoodMatches(img1, img2, points1, points2, detector_type);
   cv::Mat F = ComputeFundamentalMatrix(points1, points2);
@@ -731,8 +737,9 @@ void SFMFrontend::twoViewEuclideanReconstruction(
   // points3D = sfmFrontend.scaleToVisibleRange(points3D);
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
       convertToPointCloud(points3D, points1, img1);
-  std::cout << "cloud size: " << cloud->size() << std::endl;
+  // std::cout << "cloud size: " << cloud->size() << std::endl;
   pclProcessor_.addPointCloud(*cloud, std::to_string(time(nullptr)));
+  return points3D;
 }
 void SFMFrontend::twoViewEuclideanReconstruction(
     cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR, const cv::Mat &Inputt,
@@ -879,10 +886,10 @@ void SFMFrontend::processImageGraph(float ratio_threshold,
                                     int min_match_count) {
   // 遍历所有基底节点 (base_node)
   for (auto &base_pair : image_graph_) {
-    std::cout << Console::INFO
-              << "Processing base node id: " << base_pair.second.image_id
-              << " || before: " << base_pair.second.keypoints.size()
-              << std::endl;
+    // std::cout << Console::INFO
+    //           << "Processing base node id: " << base_pair.second.image_id
+    //           << " || before: " << base_pair.second.keypoints.size()
+    //           << std::endl;
     ImageNode &base_node = base_pair.second;
     if (base_node.descriptors.empty())
       continue;
@@ -936,8 +943,8 @@ void SFMFrontend::processImageGraph(float ratio_threshold,
         base_node.points_descriptors.push_back(base_node.descriptors.row(i));
       }
     }
-    std::cout << Console::INFO << "Later: " << base_node.points.size()
-              << std::endl;
+    // std::cout << Console::INFO << "Later: " << base_node.points.size()
+    //           << std::endl;
   }
 }
 std::map<int, ImageNode> SFMFrontend::getImageGraph() { return image_graph_; }
@@ -1080,10 +1087,10 @@ void SFMFrontend::deleteEdges(int i, int j) {
                               }),
                edges_.end());
 }
-void SFMFrontend::getEdges(int &i, int &j, const bool &isDeleteEdge) {
+bool SFMFrontend::getEdges(int &i, int &j, const bool &isDeleteEdge) {
   if (edges_.empty()) {
     std::cout << Console::WARNING << "No edges available.\n";
-    return;
+    return false;
   }
   std::pair<int, int> edge = edges_.back();
   i = edge.first;
@@ -1091,5 +1098,46 @@ void SFMFrontend::getEdges(int &i, int &j, const bool &isDeleteEdge) {
   std::cout << Console::INFO << "Selected edge: (" << i << ", " << j << ")\n";
   if (isDeleteEdge)
     deleteEdges(i, j); // 删除边
+  return true;
+}
+void SFMFrontend::getEdgesWithMaxPoints(int &i, int &j) {
+  if (edges_.empty()) {
+    std::cout << Console::WARNING << "No edges available.\n";
+    return;
+  }
+  int maxPoints = 0;
+  int Points = 0;
+  for (auto &edge : edges_) {
+    Points = image_graph_[edge.first].points.size() +
+             image_graph_[edge.second].points.size();
+    std::cout << Console::INFO << "Edge: (" << edge.first << ", " << edge.second
+              << ") Points: " << Points << "\n";
+    if (maxPoints < Points) {
+      maxPoints = Points;
+      i = edge.first;
+      j = edge.second;
+    }
+  }
+  std::cout << Console::INFO << "Selected edge: (" << i << ", " << j << ")\n";
+}
+// 增量式SFM
+// 先取出两个做欧式结构恢复，得出基本的点云
+// 循环取边，PnP，BA，更新点云
+void SFMFrontend::incrementalSFM() {
+  int i, j;
+  getEdgesWithMaxPoints(i, j);
+  if (!getEdges(i, j, true)) {
+    std::cout << Console::ERROR << "No edges available.\n";
+    return;
+  }
+  std::cout << Console::INFO << "Incremental SFM started.\n";
+  cv::Mat img1 = image_graph_[i].image;
+  cv::Mat img2 = image_graph_[j].image;
+  points3D_ = twoViewEuclideanReconstruction(
+      img1, img2, pre::FeatureDetectorType::SIFT, true); // 初始的点集
+  while (getEdges(i, j, true)) {
+    cv::Mat img1 = image_graph_[i].image;
+    cv::Mat img2 = image_graph_[j].image;
+  }
 }
 } // namespace pre

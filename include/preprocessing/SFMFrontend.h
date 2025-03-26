@@ -125,10 +125,10 @@ public:
   std::vector<cv::Point3f>
   scaleToVisibleRange(std::vector<cv::Point3f> &points3D);
   std::vector<cv::Point3f> homogeneous2euclidean(const cv::Mat &points4D);
-  void twoViewEuclideanReconstruction(
+  std::vector<cv::Point3f> twoViewEuclideanReconstruction(
       cv::Mat &img1, cv::Mat &img2,
-      FeatureDetectorType detector_type =
-          FeatureDetectorType::SIFT); // 双视图欧式结构恢复和构建稀疏点云
+      FeatureDetectorType detector_type = FeatureDetectorType::SIFT,
+      bool isProcessed = false); // 双视图欧式结构恢复和构建稀疏点云
   void twoViewEuclideanReconstruction(
       cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR,
       const cv::Mat &Inputt, cv::Mat &OutputR, cv::Mat &Outputt,
@@ -149,8 +149,10 @@ public:
   void populateEdges(int min_matches_threshold = 30); // 建立图像图中的边
   void printGraphAsMatrix();                          // 打印图像图
   void deleteEdges(int i, int j); // 删除图像图中的边
-  void getEdges(int &i, int &j,
+  bool getEdges(int &i, int &j,
                 const bool &isDeleteEdge = true); // 获取图像图中的边
+  void incrementalSFM();                          // 增量式SFM
+  void getEdgesWithMaxPoints(int &i, int &j); // 获取图像图中点数最多的边
   ~SFMFrontend();
 
 private:
@@ -163,6 +165,7 @@ private:
   std::map<int, ImageNode> image_graph_;   // 图像图（key为image_id）
   std::vector<std::pair<int, int>> edges_; // 图像间的边（连接关系）
   int next_track_id_ = 0;                  // 轨迹ID自增计数器
+  std::vector<cv::Point3f> points3D_;      // 三维点集
 };
 } // namespace pre
 
