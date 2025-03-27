@@ -1124,20 +1124,92 @@ void SFMFrontend::getEdgesWithMaxPoints(int &i, int &j) {
 // 先取出两个做欧式结构恢复，得出基本的点云
 // 循环取边，PnP，BA，更新点云
 void SFMFrontend::incrementalSFM() {
-  int i, j;
-  getEdgesWithMaxPoints(i, j);
-  if (!getEdges(i, j, true)) {
-    std::cout << Console::ERROR << "No edges available.\n";
-    return;
-  }
+  int base_cam, next_cam;
+  getEdgesWithMaxPoints(base_cam, next_cam);
+
   std::cout << Console::INFO << "Incremental SFM started.\n";
-  cv::Mat img1 = image_graph_[i].image;
-  cv::Mat img2 = image_graph_[j].image;
+  cv::Mat img1 = image_graph_[base_cam].image;
+  cv::Mat img2 = image_graph_[next_cam].image;
   points3D_ = twoViewEuclideanReconstruction(
       img1, img2, pre::FeatureDetectorType::SIFT, true); // 初始的点集
-  while (getEdges(i, j, true)) {
-    cv::Mat img1 = image_graph_[i].image;
-    cv::Mat img2 = image_graph_[j].image;
+  std::set<int> registered_cams = {base_cam, next_cam};
+  deleteEdges(base_cam, next_cam);
+  while (!edges_.empty()) {
+    // 选择与已注册相机有最多匹配的未注册相机
+    int best_cam = -1, max_matches = 0, ref_cam = -1;
+    for (const auto &edge : edges_) {
+      int cam1 = edge.first, cam2 = edge.second;
+      bool cam1_reg = registered_cams.count(cam1);
+      bool cam2_reg = registered_cams.count(cam2);
+      if (cam1_reg != cam2_reg) { // 找到连接已注册和未注册的边
+        int candidate = cam1_reg ? cam2 : cam1;
+        int ref = cam1_reg ? cam1 : cam2;
+        // 获取两视图间的匹配数
+        std::vector<cv::Point2f> pts1, pts2;
+        GetGoodMatches(image_graph_[ref].image, image_graph_[candidate].image,
+                       pts1, pts2, FeatureDetectorType::SIFT);
+        if (pts1.size() > max_matches) {
+          max_matches = pts1.size();
+          best_cam = candidate;
+          ref_cam = ref;
+        }
+      }
+    }
+    if (best_cam == -1) {
+      std::cerr << Console::WARNING << "No suitable next camera." << std::endl;
+      break;
+    }
+    // 步骤3：使用PnP估计新相机的位姿
+    ImageNode &new_node = image_graph_[best_cam];
+    ImageNode &ref_node = image_graph_[ref_cam];
+    // 获取匹配点对应的3D-2D对应
+    std::vector<cv::Point2f> matched_pts2D;
+    std::vector<cv::Point3f> matched_pts3D;
+    std::vector<cv::Point2f> pts_ref, pts_new;
+    GetGoodMatches(ref_node.image, new_node.image, pts_ref, pts_new,
+                   FeatureDetectorType::SIFT);
+    // 假设初始两视图的点云对应前pts_ref.size()个点
+    for (size_t i = 0; i < pts_ref.size() && i < points3D_.size(); ++i) {
+      matched_pts3D.push_back(points3D_[i]);
+      matched_pts2D.push_back(pts_new[i]);
+    }
+    if (matched_pts3D.size() < 4) {
+      std::cerr << Console::ERROR << "Insufficient points for PnP."
+                << std::endl;
+      continue;
+    }
+    // 求解PnP
+    cv::Mat rvec, tvec, R;
+    cv::solvePnPRansac(matched_pts3D, matched_pts2D, K, D, rvec, tvec, false,
+                       100, 8.0, 0.99);
+    cv::Rodrigues(rvec, R);
+    // 步骤4：添加新相机到已注册列表
+    registered_cams.insert(best_cam);
+    // pclProcessor_.addCamera(R, tvec, best_cam, new_node.image);
+    // 步骤5：三角化新相机与参考相机的新匹配点
+    std::vector<cv::Point2f> new_pts1, new_pts2;
+    GetGoodMatches(ref_node.image, new_node.image, new_pts1, new_pts2,
+                   FeatureDetectorType::SIFT);
+    // 计算投影矩阵
+    cv::Mat P1 = K * cv::Mat::eye(3, 4, CV_64F); // 参考相机假设为世界坐标系原点
+    cv::Mat P2;
+    cv::hconcat(R, tvec, P2);
+    P2 = K * P2;
+    // 三角化新点
+    cv::Mat points4D;
+    cv::triangulatePoints(P1, P2, new_pts1, new_pts2, points4D);
+    std::vector<cv::Point3f> new_points = homogeneous2euclidean(points4D);
+    // 合并到全局点云
+    points3D_.insert(points3D_.end(), new_points.begin(), new_points.end());
+    // 更新点云显示
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
+        convertToPointCloud(points3D_, new_pts1, new_node.image);
+    pclProcessor_.addPointCloud(*cloud,
+                                "global_cloud" + std::to_string(best_cam));
+    // 删除处理过的边
+    deleteEdges(ref_cam, best_cam);
   }
+  // 最终显示
+  show();
 }
 } // namespace pre
