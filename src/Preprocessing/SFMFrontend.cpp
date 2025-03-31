@@ -1120,6 +1120,22 @@ void SFMFrontend::getEdgesWithMaxPoints(int &i, int &j) {
   }
   std::cout << Console::INFO << "Selected edge: (" << i << ", " << j << ")\n";
 }
+void SFMFrontend::showEdgesMatchs(int i, int j) {
+  cv::Mat img1 = image_graph_[i].image.clone();
+  cv::Mat img2 = image_graph_[j].image.clone();
+  cv::Mat img3;
+  std::vector<cv::DMatch> matches = matchFeatures(
+      image_graph_[i].points_descriptors, image_graph_[j].points_descriptors);
+  img3 = drawFeatureMatches(img1, image_graph_[i].points, img2,
+                            image_graph_[j].points, matches);
+  cv::imshow("Matches" + std::to_string(i) + std::to_string(j), img3);
+}
+void SFMFrontend::showAllEdgesMatchs() {
+  for (auto &edge : edges_) {
+    showEdgesMatchs(edge.first, edge.second);
+  }
+  cv::waitKey(0);
+}
 // 增量式SFM
 // 先取出两个做欧式结构恢复，得出基本的点云
 // 循环取边，PnP，BA，更新点云

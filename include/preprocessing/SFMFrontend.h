@@ -136,11 +136,11 @@ public:
   void show();
 
   void processImageNodes(std::vector<ImageNode> &all_nodes,
-                         float ratio_threshold = 0.8f, int min_match_count = 2);
+                         float ratio_threshold = 0.7f, int min_match_count = 2);
   void processImageGraph(std::map<int, ImageNode> &image_graph,
-                         float ratio_threshold = 0.8f, int min_match_count = 2);
+                         float ratio_threshold = 0.7f, int min_match_count = 2);
   std::map<int, ImageNode> getImageGraph(); // 获取图像图
-  void processImageGraph(float ratio_threshold = 0.8f, int min_match_count = 2);
+  void processImageGraph(float ratio_threshold = 0.7f, int min_match_count = 2);
   void populateImageGraph(std::map<int, ImageNode> &imageGraph,
                           const std::string &filePathBegin,
                           int startImageId = 0);
@@ -153,6 +153,8 @@ public:
                 const bool &isDeleteEdge = true); // 获取图像图中的边
   void incrementalSFM();                          // 增量式SFM
   void getEdgesWithMaxPoints(int &i, int &j); // 获取图像图中点数最多的边
+  void showEdgesMatchs(int i, int j);         // 显示图像图中的匹配点
+  void showAllEdgesMatchs();                  // 显示每一条边的匹配点
   ~SFMFrontend();
 
 private:
