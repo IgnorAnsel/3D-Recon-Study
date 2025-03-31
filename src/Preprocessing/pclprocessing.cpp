@@ -214,6 +214,9 @@ void PCLProcessing::setGlobalCloud(
 pcl::visualization::PCLVisualizer::Ptr PCLProcessing::getViewer() {
   return viewer_;
 }
+pcl::PointCloud<pcl::PointXYZRGB>::Ptr PCLProcessing::getGlobalCloud() {
+  return globalCloud_;
+}
 template bool PCLProcessing::addPointCloud<pcl::PointXYZRGB>(
     const pcl::PointCloud<pcl::PointXYZRGB> &cloud);
 template bool PCLProcessing::addPointCloud<pcl::PointXYZ>(

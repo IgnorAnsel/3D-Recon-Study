@@ -7,7 +7,7 @@ int main(int argc, char **argv) {
   sfmFrontend.processImageGraph(0.6f);
   sfmFrontend.populateEdges(50);
   // sfmFrontend.printGraphAsMatrix();
-  sfmFrontend.showAllEdgesMatchs();
+  sfmFrontend.incrementalSFM();
 
   return 0;
 }

@@ -37,6 +37,7 @@ std::vector<cv::DMatch> SFMFrontend::matchFeatures(const cv::Mat &descriptors1,
 
   std::vector<std::vector<cv::DMatch>> knnMatches;
   matcher.knnMatch(descriptors1, descriptors2, knnMatches, 2);
+  matcher.knnMatch(descriptors2, descriptors1, knnMatches, 2);
 
   // 应用 Lowe's ratio test
   std::vector<cv::DMatch> goodMatches;
@@ -594,7 +595,8 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
   // 创建PCL点云
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZRGB>);
-  std::cout << Console::INFO << points3D.size() << std::endl;
+  std::cout << Console::INFO << "[convertToPointCloud]"
+            << "3D points: " << points3D.size() << std::endl;
   // 设置点云基本属性
   cloud->width = points3D.size();
   cloud->height = 1;       // 无序点云
@@ -609,9 +611,6 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
     cloud->points[i].x = points3D[i].x;
     cloud->points[i].y = points3D[i].y;
     cloud->points[i].z = points3D[i].z;
-    // std::cout << Console::INFO << cloud->points[i].x << ","
-    //           << cloud->points[i].y << "," << cloud->points[i].z <<
-    //           std::endl;
     // 添加颜色信息
     if (hasColor) {
       int x = static_cast<int>(std::round(imagePoints[i].x));
@@ -645,7 +644,9 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
       cloud->points[i].b = 255;
     }
   }
-
+  std::cout << Console::INFO << "[convertToPointCloud]"
+            << " Point cloud generated with " << cloud->points.size()
+            << " points." << std::endl;
   return cloud;
 }
 std::vector<cv::Point3f>
@@ -761,6 +762,9 @@ void SFMFrontend::twoViewEuclideanReconstruction(
   pclProcessor_.addPointCloud(*cloud, std::to_string(time(nullptr)));
 }
 void SFMFrontend::show() {
+  std::cout << Console::INFO
+            << "Cloud size :" << pclProcessor_.getGlobalCloud()->size()
+            << std::endl;
   while (!pclProcessor_.getViewer()->wasStopped()) {
     pclProcessor_.getViewer()->spinOnce(100);
     cv::waitKey(1);
@@ -913,7 +917,8 @@ void SFMFrontend::processImageGraph(float ratio_threshold,
       std::vector<std::vector<cv::DMatch>> knn_matches;
       matcher->knnMatch(base_node.descriptors, target_node.descriptors,
                         knn_matches, 2);
-
+      matcher->knnMatch(target_node.descriptors, base_node.descriptors,
+                        knn_matches, 2);
       // 应用比率测试筛选优质匹配
       std::vector<cv::DMatch> good_matches;
       for (size_t i = 0; i < knn_matches.size(); ++i) {
@@ -1219,7 +1224,7 @@ void SFMFrontend::incrementalSFM() {
     points3D_.insert(points3D_.end(), new_points.begin(), new_points.end());
     // 更新点云显示
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
-        convertToPointCloud(points3D_, new_pts1, new_node.image);
+        convertToPointCloud(new_points, new_pts1, new_node.image);
     pclProcessor_.addPointCloud(*cloud,
                                 "global_cloud" + std::to_string(best_cam));
     // 删除处理过的边

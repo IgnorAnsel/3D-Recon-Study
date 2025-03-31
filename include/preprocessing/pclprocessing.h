@@ -2,6 +2,7 @@
 #define PCLPROCESSING_H
 
 #include "config.h"
+#include "preprocessing/console.h"
 #include <opencv2/opencv.hpp>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
@@ -59,6 +60,9 @@ bool PCLProcessing::addPointCloud(const pcl::PointCloud<PointT> &cloud,
   if (!isInit_)
     return false;
   std::string cloudID = frameName;
+  std::cout << Console::INFO
+            << "[addPointCloud] Adding point cloud: " << cloudID
+            << " size:" << cloud.size() << std::endl;
   viewer_->addPointCloud<PointT>(cloud.makeShared(), cloudID);
   return true;
 }
