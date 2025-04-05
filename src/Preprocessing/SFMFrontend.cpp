@@ -1105,6 +1105,76 @@ bool SFMFrontend::getEdges(int &i, int &j, const bool &isDeleteEdge) {
     deleteEdges(i, j); // 删除边
   return true;
 }
+void SFMFrontend::getEdgesWithBestPoints(int &i, int &j) {
+  if (edges_.empty()) {
+    std::cout << Console::WARNING << "No edges available.\n";
+    return;
+  }
+
+  double best_score = -1.0;
+  int best_i = -1, best_j = -1;
+
+  for (const auto &edge : edges_) {
+    int current_i = edge.first;
+    int current_j = edge.second;
+
+    // Get the descriptors for both images
+    const cv::Mat &descriptors1 = image_graph_[current_i].points_descriptors;
+    const cv::Mat &descriptors2 = image_graph_[current_j].points_descriptors;
+
+    if (descriptors1.empty() || descriptors2.empty()) {
+      continue;
+    }
+
+    // Use FLANN matcher
+    cv::Ptr<cv::DescriptorMatcher> matcher =
+        cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
+    std::vector<std::vector<cv::DMatch>> knn_matches;
+    matcher->knnMatch(descriptors1, descriptors2, knn_matches, 2);
+
+    // Apply Lowe's ratio test
+    std::vector<cv::DMatch> good_matches;
+    for (size_t m = 0; m < knn_matches.size(); m++) {
+      if (knn_matches[m].size() < 2)
+        continue;
+      if (knn_matches[m][0].distance < 0.8 * knn_matches[m][1].distance) {
+        good_matches.push_back(knn_matches[m][0]);
+      }
+    }
+
+    // Calculate a score that considers both quantity and quality
+    // Here we use a simple metric: number of good matches * (1 - average ratio)
+    double avg_ratio = 0.0;
+    for (const auto &match : good_matches) {
+      if (knn_matches[match.queryIdx].size() >= 2) {
+        avg_ratio += knn_matches[match.queryIdx][0].distance /
+                     knn_matches[match.queryIdx][1].distance;
+      }
+    }
+    if (!good_matches.empty()) {
+      avg_ratio /= good_matches.size();
+    }
+
+    double current_score = good_matches.size() * (1.0 - avg_ratio);
+
+    if (current_score > best_score) {
+      best_score = current_score;
+      best_i = current_i;
+      best_j = current_j;
+    }
+  }
+
+  if (best_i == -1 || best_j == -1) {
+    std::cout << Console::WARNING
+              << "No valid edges with good matches found.\n";
+    return;
+  }
+
+  i = best_i;
+  j = best_j;
+  std::cout << Console::INFO << "Selected best edge: (" << i << ", " << j
+            << ") with score: " << best_score << "\n";
+}
 void SFMFrontend::getEdgesWithMaxPoints(int &i, int &j) {
   if (edges_.empty()) {
     std::cout << Console::WARNING << "No edges available.\n";
@@ -1146,7 +1216,7 @@ void SFMFrontend::showAllEdgesMatchs() {
 // 循环取边，PnP，BA，更新点云
 void SFMFrontend::incrementalSFM() {
   int base_cam, next_cam;
-  getEdgesWithMaxPoints(base_cam, next_cam);
+  getEdgesWithBestPoints(base_cam, next_cam);
 
   std::cout << Console::INFO << "Incremental SFM started.\n";
   cv::Mat img1 = image_graph_[base_cam].image;

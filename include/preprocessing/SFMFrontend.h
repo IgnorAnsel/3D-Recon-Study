@@ -153,8 +153,10 @@ public:
                 const bool &isDeleteEdge = true); // 获取图像图中的边
   void incrementalSFM();                          // 增量式SFM
   void getEdgesWithMaxPoints(int &i, int &j); // 获取图像图中点数最多的边
-  void showEdgesMatchs(int i, int j);         // 显示图像图中的匹配点
-  void showAllEdgesMatchs();                  // 显示每一条边的匹配点
+  void getEdgesWithBestPoints(int &i,
+                              int &j); // 获取图像图中能作为做好初始点的边
+  void showEdgesMatchs(int i, int j); // 显示图像图中的匹配点
+  void showAllEdgesMatchs();          // 显示每一条边的匹配点
   ~SFMFrontend();
 
 private:
