@@ -1,5 +1,6 @@
 #include "preprocessing/pclprocessing.h"
 #include "preprocessing/console.h"
+
 #include <string>
 
 // pc => pclprocessing
@@ -58,8 +59,23 @@ template <typename PointT>
 bool PCLProcessing::addPointCloud(const pcl::PointCloud<PointT> &cloud) {
   if (!isInit_)
     return false;
+
+  // 创建过滤后的点云
+  typename pcl::PointCloud<PointT>::Ptr filtered_cloud(
+      new pcl::PointCloud<PointT>);
+
+  // 统计离群点移除滤波器
+  pcl::StatisticalOutlierRemoval<PointT> sor;
+  sor.setInputCloud(cloud.makeShared());
+  sor.setMeanK(50);            // 每个点分析的邻近点数
+  sor.setStddevMulThresh(1.0); // 标准偏差乘数阈值
+  sor.filter(*filtered_cloud);
+
+  // 添加过滤后的点云到视图
   std::string cloudID = std::to_string(time(nullptr)) + "_" + "cloud";
-  viewer_->addPointCloud<PointT>(cloud.makeShared(), cloudID);
+  viewer_->addPointCloud<PointT>(filtered_cloud, cloudID);
+  std::cout << Console::INFO << "Add point cloud: " << cloudID << std::endl;
+
   return true;
 }
 // template <typename PointT>
@@ -124,7 +140,7 @@ void PCLProcessing::visualizeCameraInPointCloud(const CameraInfo &camera) {
     std::cerr << "Global cloud or viewer is not initialized!" << std::endl;
     return;
   }
-
+  std::cout << Console::INFO << "frameId: " << camera.frameId << std::endl;
   // 计算相机中心（世界坐标系）
   cv::Mat C = -camera.R.t() * camera.t;
   double px = C.at<double>(0, 0);

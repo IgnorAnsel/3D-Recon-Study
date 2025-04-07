@@ -595,8 +595,8 @@ SFMFrontend::convertToPointCloud(const std::vector<cv::Point3f> &points3D,
   // 创建PCL点云
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZRGB>);
-  std::cout << Console::INFO << "[convertToPointCloud]"
-            << "3D points: " << points3D.size() << std::endl;
+  // std::cout << Console::INFO << "[convertToPointCloud]"
+  //           << "3D points: " << points3D.size() << std::endl;
   // 设置点云基本属性
   cloud->width = points3D.size();
   cloud->height = 1;       // 无序点云
@@ -1217,14 +1217,14 @@ void SFMFrontend::showAllEdgesMatchs() {
 void SFMFrontend::incrementalSFM() {
   int base_cam, next_cam;
   getEdgesWithBestPoints(base_cam, next_cam);
-
+  deleteEdges(base_cam, next_cam);
   std::cout << Console::INFO << "Incremental SFM started.\n";
   cv::Mat img1 = image_graph_[base_cam].image;
   cv::Mat img2 = image_graph_[next_cam].image;
   points3D_ = twoViewEuclideanReconstruction(
       img1, img2, pre::FeatureDetectorType::SIFT, true); // 初始的点集
   std::set<int> registered_cams = {base_cam, next_cam};
-  deleteEdges(base_cam, next_cam);
+
   while (!edges_.empty()) {
     // 选择与已注册相机有最多匹配的未注册相机
     int best_cam = -1, max_matches = 0, ref_cam = -1;
@@ -1274,9 +1274,10 @@ void SFMFrontend::incrementalSFM() {
     cv::solvePnPRansac(matched_pts3D, matched_pts2D, K, D, rvec, tvec, false,
                        100, 8.0, 0.99);
     cv::Rodrigues(rvec, R);
+
     // 步骤4：添加新相机到已注册列表
     registered_cams.insert(best_cam);
-    // pclProcessor_.addCamera(R, tvec, best_cam, new_node.image);
+    pclProcessor_.addCamera(R, tvec, best_cam, new_node.image);
     // 步骤5：三角化新相机与参考相机的新匹配点
     std::vector<cv::Point2f> new_pts1, new_pts2;
     GetGoodMatches(ref_node.image, new_node.image, new_pts1, new_pts2,

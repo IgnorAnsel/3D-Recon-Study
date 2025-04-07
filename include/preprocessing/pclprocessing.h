@@ -4,9 +4,12 @@
 #include "config.h"
 #include "preprocessing/console.h"
 #include <opencv2/opencv.hpp>
+#include <pcl/common/common_headers.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/visualization/cloud_viewer.h>
 #include <pcl/visualization/pcl_visualizer.h>
 struct CameraInfo {
   cv::Mat R;             // 旋转矩阵
@@ -60,10 +63,26 @@ bool PCLProcessing::addPointCloud(const pcl::PointCloud<PointT> &cloud,
   if (!isInit_)
     return false;
   std::string cloudID = frameName;
+
+  // 创建过滤后的点云
+  typename pcl::PointCloud<PointT>::Ptr filtered_cloud(
+      new pcl::PointCloud<PointT>);
+
+  // 统计离群点移除滤波器
+  pcl::StatisticalOutlierRemoval<PointT> sor;
+  sor.setInputCloud(cloud.makeShared());
+  sor.setMeanK(50);            // 每个点分析的邻近点数
+  sor.setStddevMulThresh(1.0); // 标准偏差乘数阈值
+  sor.filter(*filtered_cloud);
+
+  // 添加过滤后的点云到视图
+  viewer_->addPointCloud<PointT>(filtered_cloud, cloudID);
+  // viewer_->addPointCloud<PointT>(cloud.makeShared(), cloudID);
   std::cout << Console::INFO
             << "[addPointCloud] Adding point cloud: " << cloudID
-            << " size:" << cloud.size() << std::endl;
-  viewer_->addPointCloud<PointT>(cloud.makeShared(), cloudID);
+            << " before size:" << cloud.size()
+            << " filtered size:" << filtered_cloud->size() << "\n"
+            << std::endl;
   return true;
 }
 } // namespace pre
