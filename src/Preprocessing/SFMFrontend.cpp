@@ -715,10 +715,9 @@ SFMFrontend::homogeneous2euclidean(const cv::Mat &points4D) {
 
   return points3D;
 }
-std::vector<cv::Point3f>
-SFMFrontend::twoViewEuclideanReconstruction(cv::Mat &img1, cv::Mat &img2,
-                                            FeatureDetectorType detector_type,
-                                            bool isProcessed) {
+std::vector<cv::Point3f> SFMFrontend::twoViewEuclideanReconstruction(
+    cv::Mat &img1, cv::Mat &img2, FeatureDetectorType detector_type,
+    bool isProcessed, int best_cam, int next_cam) {
   if (!isProcessed) {
     img1 = preprocessor_.preprocess(img1);
     img2 = preprocessor_.preprocess(img2);
@@ -731,8 +730,8 @@ SFMFrontend::twoViewEuclideanReconstruction(cv::Mat &img1, cv::Mat &img2,
   cv::recoverPose(points1, points2, K, D, K, D, E, R2, t2);
   cv::Mat R1 = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
   cv::Mat t1 = (cv::Mat_<double>(3, 1) << 0, 0, 0);
-  pclProcessor_.addCamera(R1, t1, 0, img1);
-  pclProcessor_.addCamera(R2, t2, 1, img2);
+  pclProcessor_.addCamera(R1, t1, best_cam, img1);
+  pclProcessor_.addCamera(R2, t2, next_cam, img2);
   std::vector<cv::Point3f> points3D =
       robustTriangulate(points1, points2, K, R1, t1, R2, t2, 0.1);
   // points3D = sfmFrontend.scaleToVisibleRange(points3D);
@@ -745,7 +744,7 @@ SFMFrontend::twoViewEuclideanReconstruction(cv::Mat &img1, cv::Mat &img2,
 std::vector<cv::Point3f> SFMFrontend::twoViewEuclideanReconstruction(
     cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR, const cv::Mat &Inputt,
     cv::Mat &OutputR, cv::Mat &Outputt, FeatureDetectorType detector_type,
-    bool isProcessed) {
+    bool isProcessed, int best_cam, int next_cam) {
   if (!isProcessed) {
     img1 = preprocessor_.preprocess(img1);
     img2 = preprocessor_.preprocess(img2);
@@ -755,8 +754,8 @@ std::vector<cv::Point3f> SFMFrontend::twoViewEuclideanReconstruction(
   cv::Mat F = ComputeFundamentalMatrix(points1, points2);
   cv::Mat E;
   cv::recoverPose(points1, points2, K, D, K, D, E, OutputR, Outputt);
-  pclProcessor_.addCamera(InputR, Inputt, 0, img1);
-  pclProcessor_.addCamera(OutputR, Outputt, 1, img2);
+  pclProcessor_.addCamera(InputR, Inputt, best_cam, img1);
+  pclProcessor_.addCamera(OutputR, Outputt, next_cam, img2);
   std::vector<cv::Point3f> points3D = robustTriangulate(
       points1, points2, K, InputR, Inputt, OutputR, Outputt, 10000);
   // points3D = sfmFrontend.scaleToVisibleRange(points3D);
@@ -1247,7 +1246,7 @@ void SFMFrontend::incrementalSFM() {
   points3D_ = twoViewEuclideanReconstruction(
       img1, img2, image_graph_[base_cam].R, image_graph_[base_cam].t,
       image_graph_[next_cam].R, image_graph_[next_cam].t,
-      pre::FeatureDetectorType::SIFT, true); // 初始的点集
+      pre::FeatureDetectorType::SIFT, true, base_cam, next_cam); // 初始的点集
   std::set<int> registered_cams = {base_cam, next_cam};
   registerImage(base_cam);
   registerImage(next_cam);
@@ -1261,6 +1260,9 @@ void SFMFrontend::incrementalSFM() {
       if (cam1_reg != cam2_reg) { // 找到连接已注册和未注册的边
         int candidate = cam1_reg ? cam2 : cam1;
         int ref = cam1_reg ? cam1 : cam2;
+
+        std::cout << "找到已经注册的参考相机" << ref << "和未注册的候选相机"
+                  << candidate << std::endl;
         // 获取两视图间的匹配数
         std::vector<cv::Point2f> pts1, pts2;
         GetGoodMatches(image_graph_[ref].image, image_graph_[candidate].image,
@@ -1280,33 +1282,55 @@ void SFMFrontend::incrementalSFM() {
     ImageNode &new_node = image_graph_[best_cam];
     ImageNode &ref_node = image_graph_[ref_cam];
     std::cout << "处理：" << best_cam << "和" << ref_cam << std::endl;
-    // 获取匹配点对应的3D-2D对应
-    std::vector<cv::Point2f> matched_pts2D;
-    std::vector<cv::Point3f> matched_pts3D;
-    std::vector<cv::Point2f> pts_ref, pts_new;
-    GetGoodMatches(ref_node.image, new_node.image, pts_ref, pts_new,
-                   FeatureDetectorType::SIFT);
-    // 假设初始两视图的点云对应前pts_ref.size()个点
-    for (size_t i = 0; i < pts_ref.size() && i < points3D_.size(); ++i) {
-      matched_pts3D.push_back(points3D_[i]);
-      matched_pts2D.push_back(pts_new[i]);
-    }
-    if (matched_pts3D.size() < 4) {
-      std::cerr << Console::ERROR << "Insufficient points for PnP."
-                << std::endl;
-      continue;
-    }
-    // 求解PnP
-    cv::Mat rvec, tvec, R;
-    cv::solvePnPRansac(matched_pts3D, matched_pts2D, K, cv::noArray(), rvec,
-                       tvec, false, 100, 8.0, 0.99);
-    cv::Rodrigues(rvec, R);
-    new_node.R = R.clone();
-    new_node.t = tvec.clone();
 
-    // 步骤4：添加新相机到已注册列表
-    registered_cams.insert(best_cam);
-    pclProcessor_.addCamera(R, tvec, best_cam, new_node.image);
+    // 获取匹配点对应的3D-2D对应
+    // 求解PnP
+    cv::Mat rvec_new, tvec_new, R_new;
+    cv::Mat rvec_ref, tvec_ref, R_ref;
+    std::vector<cv::DMatch> matches =
+        matchFeatures(new_node.points_descriptors, ref_node.points_descriptors);
+    std::vector<cv::Point3f> matched_points3D_new;
+    std::vector<cv::Point2f> matched_points2D_new;
+
+    for (const auto &match : matches) {
+      matched_points3D_new.push_back(points3D_[match.queryIdx]);
+      matched_points2D_new.push_back(new_node.points[match.trainIdx].pt);
+    }
+
+    // ref_node
+    std::vector<cv::Point3f> matched_points3D_ref;
+    std::vector<cv::Point2f> matched_points2D_ref;
+
+    for (const auto &match : matches) {
+      matched_points3D_ref.push_back(points3D_[match.queryIdx]);
+      matched_points2D_ref.push_back(ref_node.points[match.trainIdx].pt);
+    }
+
+    // 调用 solvePnPRansac
+    cv::solvePnPRansac(matched_points3D_new, matched_points2D_new, K,
+                       cv::noArray(), rvec_new, tvec_new);
+    cv::solvePnPRansac(matched_points3D_ref, matched_points2D_ref, K,
+                       cv::noArray(), rvec_ref, tvec_ref);
+
+    cv::Rodrigues(rvec_new, R_new);
+    new_node.R = R_new.clone();
+    new_node.t = tvec_new.clone();
+
+    cv::Rodrigues(rvec_ref, R_ref);
+    ref_node.R = R_ref.clone();
+    ref_node.t = tvec_ref.clone();
+    if (!new_node.isRegistered) {
+      std::cout << "registering new node" << best_cam << std::endl;
+      pclProcessor_.addCamera(new_node.R, new_node.t, best_cam, new_node.image);
+      // 步骤4：添加新相机到已注册列表
+      registered_cams.insert(best_cam);
+      registerImage(best_cam);
+    }
+    if (!ref_node.isRegistered) {
+      pclProcessor_.addCamera(ref_node.R, ref_node.t, ref_cam, ref_node.image);
+      registered_cams.insert(ref_cam);
+      registerImage(ref_cam);
+    }
     // 步骤5：三角化新相机与参考相机的新匹配点
     std::vector<cv::Point2f> new_pts1, new_pts2;
     GetGoodMatches(ref_node.image, new_node.image, new_pts1, new_pts2,

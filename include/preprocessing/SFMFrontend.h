@@ -45,6 +45,7 @@ struct ImageNode {
   cv::Mat R = cv::Mat();               // 相机旋转矩阵
   cv::Mat t = cv::Mat();               // 相机平移向量
   bool isRegistered;                   // 是否已注册
+  std::vector<cv::Point3f> points3d;   // 图像三角化的3D坐标
 };
 struct Track {
   int track_id;                                  // 轨迹唯一ID
@@ -131,12 +132,14 @@ public:
   std::vector<cv::Point3f> twoViewEuclideanReconstruction(
       cv::Mat &img1, cv::Mat &img2,
       FeatureDetectorType detector_type = FeatureDetectorType::SIFT,
-      bool isProcessed = false); // 双视图欧式结构恢复和构建稀疏点云
+      bool isProcessed = false, int best_cam = 0,
+      int next_cam = 1); // 双视图欧式结构恢复和构建稀疏点云
   std::vector<cv::Point3f> twoViewEuclideanReconstruction(
       cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR,
       const cv::Mat &Inputt, cv::Mat &OutputR, cv::Mat &Outputt,
       FeatureDetectorType detector_type = FeatureDetectorType::SIFT,
-      bool isProcessed = false); // 双视图欧式结构恢复和构建稀疏点云
+      bool isProcessed = false, int best_cam = 0,
+      int next_cam = 1); // 双视图欧式结构恢复和构建稀疏点云
   void show();
   void processShow();
   void processImageNodes(std::vector<ImageNode> &all_nodes,
