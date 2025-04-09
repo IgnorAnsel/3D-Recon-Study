@@ -742,11 +742,14 @@ SFMFrontend::twoViewEuclideanReconstruction(cv::Mat &img1, cv::Mat &img2,
   pclProcessor_.addPointCloud(*cloud, std::to_string(time(nullptr)));
   return points3D;
 }
-void SFMFrontend::twoViewEuclideanReconstruction(
+std::vector<cv::Point3f> SFMFrontend::twoViewEuclideanReconstruction(
     cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR, const cv::Mat &Inputt,
-    cv::Mat &OutputR, cv::Mat &Outputt, FeatureDetectorType detector_type) {
-  img1 = preprocessor_.preprocess(img1);
-  img2 = preprocessor_.preprocess(img2);
+    cv::Mat &OutputR, cv::Mat &Outputt, FeatureDetectorType detector_type,
+    bool isProcessed) {
+  if (!isProcessed) {
+    img1 = preprocessor_.preprocess(img1);
+    img2 = preprocessor_.preprocess(img2);
+  }
   std::vector<cv::Point2f> points1, points2;
   GetGoodMatches(img1, img2, points1, points2, detector_type);
   cv::Mat F = ComputeFundamentalMatrix(points1, points2);
@@ -760,6 +763,7 @@ void SFMFrontend::twoViewEuclideanReconstruction(
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud =
       convertToPointCloud(points3D, points1, img1);
   pclProcessor_.addPointCloud(*cloud, std::to_string(time(nullptr)));
+  return points3D;
 }
 void SFMFrontend::show() {
   std::cout << Console::INFO
@@ -770,7 +774,17 @@ void SFMFrontend::show() {
     cv::waitKey(1);
   }
 }
-
+void SFMFrontend::processShow() {
+  bool isok = false;
+  while (!pclProcessor_.getViewer()->wasStopped()) {
+    pclProcessor_.getViewer()->spinOnce(100);
+    if (!isok) {
+      incrementalSFM();
+      isok = true;
+    }
+    cv::waitKey(1);
+  }
+}
 void SFMFrontend::processImageNodes(std::vector<ImageNode> &all_nodes,
                                     float ratio_threshold,
                                     int min_match_count) {
@@ -1105,6 +1119,13 @@ bool SFMFrontend::getEdges(int &i, int &j, const bool &isDeleteEdge) {
     deleteEdges(i, j); // 删除边
   return true;
 }
+void SFMFrontend::registerImage(int ID) {
+  if (ID >= image_graph_.size() || ID < 0) {
+    std::cout << Console::WARNING << "Invalid image ID.\n";
+    return;
+  }
+  image_graph_[ID].isRegistered = true;
+}
 void SFMFrontend::getEdgesWithBestPoints(int &i, int &j) {
   if (edges_.empty()) {
     std::cout << Console::WARNING << "No edges available.\n";
@@ -1221,10 +1242,15 @@ void SFMFrontend::incrementalSFM() {
   std::cout << Console::INFO << "Incremental SFM started.\n";
   cv::Mat img1 = image_graph_[base_cam].image;
   cv::Mat img2 = image_graph_[next_cam].image;
+  image_graph_[base_cam].R = cv::Mat::eye(3, 3, CV_64F);
+  image_graph_[base_cam].t = cv::Mat::zeros(3, 1, CV_64F);
   points3D_ = twoViewEuclideanReconstruction(
-      img1, img2, pre::FeatureDetectorType::SIFT, true); // 初始的点集
+      img1, img2, image_graph_[base_cam].R, image_graph_[base_cam].t,
+      image_graph_[next_cam].R, image_graph_[next_cam].t,
+      pre::FeatureDetectorType::SIFT, true); // 初始的点集
   std::set<int> registered_cams = {base_cam, next_cam};
-
+  registerImage(base_cam);
+  registerImage(next_cam);
   while (!edges_.empty()) {
     // 选择与已注册相机有最多匹配的未注册相机
     int best_cam = -1, max_matches = 0, ref_cam = -1;
@@ -1253,6 +1279,7 @@ void SFMFrontend::incrementalSFM() {
     // 步骤3：使用PnP估计新相机的位姿
     ImageNode &new_node = image_graph_[best_cam];
     ImageNode &ref_node = image_graph_[ref_cam];
+    std::cout << "处理：" << best_cam << "和" << ref_cam << std::endl;
     // 获取匹配点对应的3D-2D对应
     std::vector<cv::Point2f> matched_pts2D;
     std::vector<cv::Point3f> matched_pts3D;
@@ -1271,9 +1298,11 @@ void SFMFrontend::incrementalSFM() {
     }
     // 求解PnP
     cv::Mat rvec, tvec, R;
-    cv::solvePnPRansac(matched_pts3D, matched_pts2D, K, D, rvec, tvec, false,
-                       100, 8.0, 0.99);
+    cv::solvePnPRansac(matched_pts3D, matched_pts2D, K, cv::noArray(), rvec,
+                       tvec, false, 100, 8.0, 0.99);
     cv::Rodrigues(rvec, R);
+    new_node.R = R.clone();
+    new_node.t = tvec.clone();
 
     // 步骤4：添加新相机到已注册列表
     registered_cams.insert(best_cam);
@@ -1283,14 +1312,27 @@ void SFMFrontend::incrementalSFM() {
     GetGoodMatches(ref_node.image, new_node.image, new_pts1, new_pts2,
                    FeatureDetectorType::SIFT);
     // 计算投影矩阵
-    cv::Mat P1 = K * cv::Mat::eye(3, 4, CV_64F); // 参考相机假设为世界坐标系原点
-    cv::Mat P2;
-    cv::hconcat(R, tvec, P2);
+    cv::Mat P1, P2;
+    cv::hconcat(ref_node.R, ref_node.t, P1); // 使用ref_node的当前位姿
+    P1 = K * P1;
+
+    if (ref_node.R.empty() || ref_node.t.empty()) {
+      std::cerr << Console::ERROR << "ref_node.R or ref_node.t is empty."
+                << std::endl;
+      continue;
+    }
+    cv::hconcat(new_node.R, new_node.t, P2); // 使用新相机的世界位姿
     P2 = K * P2;
     // 三角化新点
     cv::Mat points4D;
     cv::triangulatePoints(P1, P2, new_pts1, new_pts2, points4D);
     std::vector<cv::Point3f> new_points = homogeneous2euclidean(points4D);
+    // 输出new_points
+    new_points.erase(
+        std::remove_if(new_points.begin(), new_points.end(),
+                       [](const cv::Point3f &p) { return p.z < 0; }),
+        new_points.end()); // 去除z小于0的点
+
     // 合并到全局点云
     points3D_.insert(points3D_.end(), new_points.begin(), new_points.end());
     // 更新点云显示

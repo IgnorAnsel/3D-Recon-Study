@@ -42,6 +42,9 @@ struct ImageNode {
   std::vector<cv::KeyPoint> points;    // 关键点(优化)
   cv::Mat points_descriptors;          // 关键点描述子
   cv::Mat descriptors;                 // 描述子
+  cv::Mat R = cv::Mat();               // 相机旋转矩阵
+  cv::Mat t = cv::Mat();               // 相机平移向量
+  bool isRegistered;                   // 是否已注册
 };
 struct Track {
   int track_id;                                  // 轨迹唯一ID
@@ -129,12 +132,13 @@ public:
       cv::Mat &img1, cv::Mat &img2,
       FeatureDetectorType detector_type = FeatureDetectorType::SIFT,
       bool isProcessed = false); // 双视图欧式结构恢复和构建稀疏点云
-  void twoViewEuclideanReconstruction(
+  std::vector<cv::Point3f> twoViewEuclideanReconstruction(
       cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR,
       const cv::Mat &Inputt, cv::Mat &OutputR, cv::Mat &Outputt,
-      FeatureDetectorType detector_type = FeatureDetectorType::SIFT);
+      FeatureDetectorType detector_type = FeatureDetectorType::SIFT,
+      bool isProcessed = false); // 双视图欧式结构恢复和构建稀疏点云
   void show();
-
+  void processShow();
   void processImageNodes(std::vector<ImageNode> &all_nodes,
                          float ratio_threshold = 0.7f, int min_match_count = 2);
   void processImageGraph(std::map<int, ImageNode> &image_graph,
@@ -157,6 +161,7 @@ public:
                               int &j); // 获取图像图中能作为做好初始点的边
   void showEdgesMatchs(int i, int j); // 显示图像图中的匹配点
   void showAllEdgesMatchs();          // 显示每一条边的匹配点
+  void registerImage(int ID);         // 注册图像
   ~SFMFrontend();
 
 private:
