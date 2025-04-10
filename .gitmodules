@@ -1,0 +1,3 @@
+[submodule "3rdpaty/ceres-solver"]
+	path = 3rdpaty/ceres-solver
+	url = https://github.com/ceres-solver/ceres-solver
