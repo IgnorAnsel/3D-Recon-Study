@@ -138,8 +138,9 @@ public:
       cv::Mat &img1, cv::Mat &img2, const cv::Mat &InputR,
       const cv::Mat &Inputt, cv::Mat &OutputR, cv::Mat &Outputt,
       FeatureDetectorType detector_type = FeatureDetectorType::SIFT,
-      bool isProcessed = false, int best_cam = 0,
-      int next_cam = 1); // 双视图欧式结构恢复和构建稀疏点云
+      bool isProcessed = false, int best_cam = 0, int next_cam = 1,
+      bool addCamera1 = true,
+      bool addCamera2 = true); // 双视图欧式结构恢复和构建稀疏点云
   void show();
   void processShow();
   void processImageNodes(std::vector<ImageNode> &all_nodes,
@@ -159,12 +160,20 @@ public:
   bool getEdges(int &i, int &j,
                 const bool &isDeleteEdge = true); // 获取图像图中的边
   void incrementalSFM();                          // 增量式SFM
+  void incrementalSFM2();                         // 增量式SFM
   void getEdgesWithMaxPoints(int &i, int &j); // 获取图像图中点数最多的边
   void getEdgesWithBestPoints(int &i,
                               int &j); // 获取图像图中能作为做好初始点的边
   void showEdgesMatchs(int i, int j); // 显示图像图中的匹配点
   void showAllEdgesMatchs();          // 显示每一条边的匹配点
   void registerImage(int ID);         // 注册图像
+  void shunxuSFM(const std::string &filePathBegin); // 顺序式SFM
+  std::vector<cv::Point3f>
+  robustTriangulateWithFilter(const std::vector<cv::Point2f> &points1,
+                              const std::vector<cv::Point2f> &points2,
+                              const cv::Mat &K, const cv::Mat &R1,
+                              const cv::Mat &t1, const cv::Mat &R2,
+                              const cv::Mat &t2, float maxDepth);
   ~SFMFrontend();
 
 private:

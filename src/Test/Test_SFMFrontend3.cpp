@@ -5,9 +5,9 @@ int main(int argc, char **argv) {
                                "/room/calibration_result.yml");
   sfmFrontend.populateImageGraph(std::string(RESOURCE_DIR) + "/room/room_");
   sfmFrontend.processImageGraph(0.6f);
-  sfmFrontend.populateEdges(50);
+  sfmFrontend.populateEdges(40);
   // sfmFrontend.printGraphAsMatrix();
-  sfmFrontend.incrementalSFM();
-
+  // sfmFrontend.incrementalSFM2();
+  sfmFrontend.shunxuSFM(std::string(RESOURCE_DIR) + "/room/room_");
   return 0;
 }
